@@ -33,9 +33,9 @@ export class DashboardComponent extends ComponentWithPermissions {
 
   get subtitle() {
     if (this.settingsService.displayName) {
-      return $localize`Hello ${this.settingsService.displayName}, welcome to LBC Finance`
+      return $localize`Hello ${this.settingsService.displayName}, welcome to DMS`
     } else {
-      return $localize`Welcome to LBC Finance`
+      return $localize`Welcome to DMS`
     }
   }
 }

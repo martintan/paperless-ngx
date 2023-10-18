@@ -10,7 +10,7 @@
 }
 
 body {
-  @include paperless-lbc;
+  @include paperless-green;
   --pngx-primary-text-contrast: var(--bs-light);
 
   --bs-primary: hsl(var(--pngx-primary), var(--pngx-primary-lightness));

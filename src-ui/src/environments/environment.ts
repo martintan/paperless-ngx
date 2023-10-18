@@ -4,9 +4,10 @@
 
 export const environment = {
   production: false,
-  apiBaseUrl: 'http://localhost:8000/api/',
+  // apiBaseUrl: 'http://localhost:8000/api/',
+  apiBaseUrl: 'https://870059adb646.ngrok.app/api/',
   apiVersion: '2',
-  appTitle: 'LBC Finance',
+  appTitle: 'DMS',
   version: 'DEVELOPMENT',
   webSocketHost: 'localhost:8000',
   webSocketProtocol: 'ws:',
