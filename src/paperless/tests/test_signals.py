@@ -1,5 +1,6 @@
 from django.http import HttpRequest
 from django.test import TestCase
+
 from paperless.signals import handle_failed_login
 
 
@@ -10,6 +11,26 @@ class TestFailedLoginLogging(TestCase):
         self.creds = {
             "username": "john lennon",
         }
+
+    def test_unauthenticated(self):
+        """
+        GIVEN:
+            - Request with no authentication provided
+        WHEN:
+            - Request provided to signal handler
+        THEN:
+            - Unable to determine logged for unauthenticated user
+        """
+        request = HttpRequest()
+        request.META = {}
+        with self.assertLogs("paperless.auth") as logs:
+            handle_failed_login(None, {}, request)
+            self.assertEqual(
+                logs.output,
+                [
+                    "INFO:paperless.auth:No authentication provided. Unable to determine IP address.",
+                ],
+            )
 
     def test_none(self):
         """
@@ -51,7 +72,7 @@ class TestFailedLoginLogging(TestCase):
             self.assertEqual(
                 logs.output,
                 [
-                    "INFO:paperless.auth:Login failed for user `john lennon` from IP `177.139.233.139.`",
+                    "INFO:paperless.auth:Login failed for user `john lennon` from IP `177.139.233.139`.",
                 ],
             )
 
@@ -75,6 +96,6 @@ class TestFailedLoginLogging(TestCase):
             self.assertEqual(
                 logs.output,
                 [
-                    "INFO:paperless.auth:Login failed for user `john lennon` from private IP `10.0.0.1.`",
+                    "INFO:paperless.auth:Login failed for user `john lennon` from private IP `10.0.0.1`.",
                 ],
             )

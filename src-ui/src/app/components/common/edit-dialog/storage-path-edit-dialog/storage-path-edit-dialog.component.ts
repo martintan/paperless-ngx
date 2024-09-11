@@ -3,22 +3,24 @@ import { FormControl, FormGroup } from '@angular/forms'
 import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap'
 import { EditDialogComponent } from 'src/app/components/common/edit-dialog/edit-dialog.component'
 import { DEFAULT_MATCHING_ALGORITHM } from 'src/app/data/matching-model'
-import { PaperlessStoragePath } from 'src/app/data/paperless-storage-path'
+import { StoragePath } from 'src/app/data/storage-path'
 import { StoragePathService } from 'src/app/services/rest/storage-path.service'
 import { UserService } from 'src/app/services/rest/user.service'
+import { SettingsService } from 'src/app/services/settings.service'
 
 @Component({
-  selector: 'app-storage-path-edit-dialog',
+  selector: 'pngx-storage-path-edit-dialog',
   templateUrl: './storage-path-edit-dialog.component.html',
   styleUrls: ['./storage-path-edit-dialog.component.scss'],
 })
-export class StoragePathEditDialogComponent extends EditDialogComponent<PaperlessStoragePath> {
+export class StoragePathEditDialogComponent extends EditDialogComponent<StoragePath> {
   constructor(
     service: StoragePathService,
     activeModal: NgbActiveModal,
-    userService: UserService
+    userService: UserService,
+    settingsService: SettingsService
   ) {
-    super(service, activeModal, userService)
+    super(service, activeModal, userService, settingsService)
   }
 
   get pathHint() {

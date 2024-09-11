@@ -5,7 +5,7 @@
 export const environment = {
   production: false,
   apiBaseUrl: 'http://localhost:8000/api/',
-  apiVersion: '2',
+  apiVersion: '5',
   appTitle: 'LBC Finance',
   version: 'DEVELOPMENT',
   webSocketHost: 'localhost:8000',

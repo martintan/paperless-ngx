@@ -11,6 +11,9 @@ import {
   PermissionsService,
   PermissionType,
 } from 'src/app/services/permissions.service'
+import { ComponentWithPermissions } from '../../with-permissions/with-permissions.component'
+import { SettingsService } from 'src/app/services/settings.service'
+import { SETTINGS_KEYS } from 'src/app/data/ui-settings'
 
 @Component({
   providers: [
@@ -20,16 +23,14 @@ import {
       multi: true,
     },
   ],
-  selector: 'app-permissions-select',
+  selector: 'pngx-permissions-select',
   templateUrl: './permissions-select.component.html',
   styleUrls: ['./permissions-select.component.scss'],
 })
 export class PermissionsSelectComponent
+  extends ComponentWithPermissions
   implements OnInit, ControlValueAccessor
 {
-  PermissionType = PermissionType
-  PermissionAction = PermissionAction
-
   @Input()
   title: string = 'Permissions'
 
@@ -61,14 +62,23 @@ export class PermissionsSelectComponent
 
   inheritedWarning: string = $localize`Inherited from group`
 
-  constructor(private readonly permissionsService: PermissionsService) {
-    for (const type in PermissionType) {
+  public allowedTypes = Object.keys(PermissionType)
+
+  constructor(
+    private readonly permissionsService: PermissionsService,
+    private readonly settingsService: SettingsService
+  ) {
+    super()
+    if (!this.settingsService.get(SETTINGS_KEYS.AUDITLOG_ENABLED)) {
+      this.allowedTypes.splice(this.allowedTypes.indexOf('History'), 1)
+    }
+    this.allowedTypes.forEach((type) => {
       const control = new FormGroup({})
       for (const action in PermissionAction) {
         control.addControl(action, new FormControl(null))
       }
       this.form.addControl(type, control)
-    }
+    })
   }
 
   writeValue(permissions: string[]): void {
@@ -92,7 +102,7 @@ export class PermissionsSelectComponent
         }
       }
     })
-    Object.keys(PermissionType).forEach((type) => {
+    this.allowedTypes.forEach((type) => {
       if (
         Object.values(this.form.get(type).value).every((val) => val == true)
       ) {
@@ -191,7 +201,7 @@ export class PermissionsSelectComponent
   }
 
   updateDisabledStates() {
-    for (const type in PermissionType) {
+    this.allowedTypes.forEach((type) => {
       const control = this.form.get(type)
       let actionControl: AbstractControl
       for (const action in PermissionAction) {
@@ -200,6 +210,6 @@ export class PermissionsSelectComponent
           ? actionControl.disable()
           : actionControl.enable()
       }
-    }
+    })
   }
 }

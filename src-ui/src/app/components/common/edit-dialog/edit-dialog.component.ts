@@ -9,32 +9,43 @@ import {
 } from 'src/app/data/matching-model'
 import { ObjectWithId } from 'src/app/data/object-with-id'
 import { ObjectWithPermissions } from 'src/app/data/object-with-permissions'
-import { PaperlessUser } from 'src/app/data/paperless-user'
+import { User } from 'src/app/data/user'
 import { AbstractPaperlessService } from 'src/app/services/rest/abstract-paperless-service'
 import { UserService } from 'src/app/services/rest/user.service'
 import { PermissionsFormObject } from '../input/permissions/permissions-form/permissions-form.component'
+import { SettingsService } from 'src/app/services/settings.service'
+import { SETTINGS_KEYS } from 'src/app/data/ui-settings'
+
+export enum EditDialogMode {
+  CREATE = 0,
+  EDIT = 1,
+}
 
 @Directive()
 export abstract class EditDialogComponent<
-  T extends ObjectWithPermissions | ObjectWithId
+  T extends ObjectWithPermissions | ObjectWithId,
 > implements OnInit
 {
   constructor(
     protected service: AbstractPaperlessService<T>,
     private activeModal: NgbActiveModal,
-    private userService: UserService
+    private userService: UserService,
+    private settingsService: SettingsService
   ) {}
 
-  users: PaperlessUser[]
+  users: User[]
 
   @Input()
-  dialogMode: string = 'create'
+  dialogMode: EditDialogMode = EditDialogMode.CREATE
 
   @Input()
   object: T
 
   @Output()
   succeeded = new EventEmitter()
+
+  @Output()
+  failed = new EventEmitter()
 
   networkActive = false
 
@@ -47,8 +58,8 @@ export abstract class EditDialogComponent<
   objectForm: FormGroup = this.getForm()
 
   ngOnInit(): void {
-    if (this.object != null) {
-      if (this.object['permissions']) {
+    if (this.object != null && this.dialogMode !== EditDialogMode.CREATE) {
+      if ((this.object as ObjectWithPermissions).permissions) {
         this.object['set_permissions'] = this.object['permissions']
       }
 
@@ -57,14 +68,43 @@ export abstract class EditDialogComponent<
         set_permissions: (this.object as ObjectWithPermissions).permissions,
       }
       this.objectForm.patchValue(this.object)
+    } else {
+      // e.g. if name was set
+      this.objectForm.patchValue(this.object)
+      // defaults from settings
+      this.objectForm.patchValue({
+        permissions_form: {
+          owner: this.settingsService.get(SETTINGS_KEYS.DEFAULT_PERMS_OWNER),
+          set_permissions: {
+            view: {
+              users: this.settingsService.get(
+                SETTINGS_KEYS.DEFAULT_PERMS_VIEW_USERS
+              ),
+              groups: this.settingsService.get(
+                SETTINGS_KEYS.DEFAULT_PERMS_VIEW_GROUPS
+              ),
+            },
+            change: {
+              users: this.settingsService.get(
+                SETTINGS_KEYS.DEFAULT_PERMS_EDIT_USERS
+              ),
+              groups: this.settingsService.get(
+                SETTINGS_KEYS.DEFAULT_PERMS_EDIT_GROUPS
+              ),
+            },
+          },
+        },
+      })
     }
 
-    // wait to enable close button so it doesnt steal focus from input since its the first clickable element in the DOM
+    // wait to enable close button so it doesn't steal focus from input since its the first clickable element in the DOM
     setTimeout(() => {
       this.closeEnabled = true
     })
 
-    this.userService.listAll().subscribe((r) => (this.users = r.results))
+    this.userService.listAll().subscribe((r) => {
+      this.users = r.results
+    })
   }
 
   getCreateTitle() {
@@ -75,15 +115,11 @@ export abstract class EditDialogComponent<
     return $localize`Edit item`
   }
 
-  getSaveErrorMessage(error: string) {
-    return $localize`Could not save element: ${error}`
-  }
-
   getTitle() {
     switch (this.dialogMode) {
-      case 'create':
+      case EditDialogMode.CREATE:
         return this.getCreateTitle()
-      case 'edit':
+      case EditDialogMode.EDIT:
         return this.getEditTitle()
       default:
         break
@@ -115,10 +151,10 @@ export abstract class EditDialogComponent<
     var newObject = Object.assign(Object.assign({}, this.object), formValues)
     var serverResponse: Observable<T>
     switch (this.dialogMode) {
-      case 'create':
+      case EditDialogMode.CREATE:
         serverResponse = this.service.create(newObject)
         break
-      case 'edit':
+      case EditDialogMode.EDIT:
         serverResponse = this.service.update(newObject)
       default:
         break
@@ -132,7 +168,7 @@ export abstract class EditDialogComponent<
       error: (error) => {
         this.error = error.error
         this.networkActive = false
-        this.succeeded.next(error)
+        this.failed.next(error)
       },
     })
   }

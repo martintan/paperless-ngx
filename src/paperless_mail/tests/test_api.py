@@ -1,7 +1,12 @@
 import json
 from unittest import mock
 
+from django.contrib.auth.models import Permission
 from django.contrib.auth.models import User
+from guardian.shortcuts import assign_perm
+from rest_framework import status
+from rest_framework.test import APITestCase
+
 from documents.models import Correspondent
 from documents.models import DocumentType
 from documents.models import Tag
@@ -9,8 +14,6 @@ from documents.tests.utils import DirectoriesMixin
 from paperless_mail.models import MailAccount
 from paperless_mail.models import MailRule
 from paperless_mail.tests.test_mail import BogusMailBox
-from rest_framework import status
-from rest_framework.test import APITestCase
 
 
 class TestAPIMailAccounts(DirectoriesMixin, APITestCase):
@@ -26,7 +29,9 @@ class TestAPIMailAccounts(DirectoriesMixin, APITestCase):
 
         super().setUp()
 
-        self.user = User.objects.create_superuser(username="temp_admin")
+        self.user = User.objects.create_user(username="temp_admin")
+        self.user.user_permissions.add(*Permission.objects.all())
+        self.user.save()
         self.client.force_authenticate(user=self.user)
 
     def test_get_mail_accounts(self):
@@ -265,6 +270,73 @@ class TestAPIMailAccounts(DirectoriesMixin, APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["success"], True)
 
+    def test_get_mail_accounts_owner_aware(self):
+        """
+        GIVEN:
+            - Configured accounts with different users
+        WHEN:
+            - API call is made to get mail accounts
+        THEN:
+            - Only unowned, owned by user or granted accounts are provided
+        """
+
+        user2 = User.objects.create_user(username="temp_admin2")
+
+        account1 = MailAccount.objects.create(
+            name="Email1",
+            username="username1",
+            password="password1",
+            imap_server="server.example.com",
+            imap_port=443,
+            imap_security=MailAccount.ImapSecurity.SSL,
+            character_set="UTF-8",
+        )
+
+        account2 = MailAccount.objects.create(
+            name="Email2",
+            username="username2",
+            password="password2",
+            imap_server="server.example.com",
+            imap_port=443,
+            imap_security=MailAccount.ImapSecurity.SSL,
+            character_set="UTF-8",
+        )
+        account2.owner = self.user
+        account2.save()
+
+        account3 = MailAccount.objects.create(
+            name="Email3",
+            username="username3",
+            password="password3",
+            imap_server="server.example.com",
+            imap_port=443,
+            imap_security=MailAccount.ImapSecurity.SSL,
+            character_set="UTF-8",
+        )
+        account3.owner = user2
+        account3.save()
+
+        account4 = MailAccount.objects.create(
+            name="Email4",
+            username="username4",
+            password="password4",
+            imap_server="server.example.com",
+            imap_port=443,
+            imap_security=MailAccount.ImapSecurity.SSL,
+            character_set="UTF-8",
+        )
+        account4.owner = user2
+        account4.save()
+        assign_perm("view_mailaccount", self.user, account4)
+
+        response = self.client.get(self.ENDPOINT)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 3)
+        self.assertEqual(response.data["results"][0]["name"], account1.name)
+        self.assertEqual(response.data["results"][1]["name"], account2.name)
+        self.assertEqual(response.data["results"][2]["name"], account4.name)
+
 
 class TestAPIMailRules(DirectoriesMixin, APITestCase):
     ENDPOINT = "/api/mail_rules/"
@@ -272,7 +344,9 @@ class TestAPIMailRules(DirectoriesMixin, APITestCase):
     def setUp(self):
         super().setUp()
 
-        self.user = User.objects.create_superuser(username="temp_admin")
+        self.user = User.objects.create_user(username="temp_admin")
+        self.user.user_permissions.add(*Permission.objects.all())
+        self.user.save()
         self.client.force_authenticate(user=self.user)
 
     def test_get_mail_rules(self):
@@ -303,7 +377,7 @@ class TestAPIMailRules(DirectoriesMixin, APITestCase):
             filter_to="someone@somewhere.com",
             filter_subject="subject",
             filter_body="body",
-            filter_attachment_filename="file.pdf",
+            filter_attachment_filename_include="file.pdf",
             maximum_age=30,
             action=MailRule.MailAction.MARK_READ,
             assign_title_from=MailRule.TitleSource.FROM_SUBJECT,
@@ -326,8 +400,8 @@ class TestAPIMailRules(DirectoriesMixin, APITestCase):
         self.assertEqual(returned_rule1["filter_subject"], rule1.filter_subject)
         self.assertEqual(returned_rule1["filter_body"], rule1.filter_body)
         self.assertEqual(
-            returned_rule1["filter_attachment_filename"],
-            rule1.filter_attachment_filename,
+            returned_rule1["filter_attachment_filename_include"],
+            rule1.filter_attachment_filename_include,
         )
         self.assertEqual(returned_rule1["maximum_age"], rule1.maximum_age)
         self.assertEqual(returned_rule1["action"], rule1.action)
@@ -379,7 +453,7 @@ class TestAPIMailRules(DirectoriesMixin, APITestCase):
             "filter_to": "aperson@aplace.com",
             "filter_subject": "subject",
             "filter_body": "body",
-            "filter_attachment_filename": "file.pdf",
+            "filter_attachment_filename_include": "file.pdf",
             "maximum_age": 30,
             "action": MailRule.MailAction.MARK_READ,
             "assign_title_from": MailRule.TitleSource.FROM_SUBJECT,
@@ -390,6 +464,7 @@ class TestAPIMailRules(DirectoriesMixin, APITestCase):
             "assign_tags": [tag.pk],
             "assign_correspondent": correspondent.pk,
             "assign_document_type": document_type.pk,
+            "assign_owner_from_rule": True,
         }
 
         response = self.client.post(
@@ -413,8 +488,8 @@ class TestAPIMailRules(DirectoriesMixin, APITestCase):
         self.assertEqual(returned_rule1["filter_subject"], rule1["filter_subject"])
         self.assertEqual(returned_rule1["filter_body"], rule1["filter_body"])
         self.assertEqual(
-            returned_rule1["filter_attachment_filename"],
-            rule1["filter_attachment_filename"],
+            returned_rule1["filter_attachment_filename_include"],
+            rule1["filter_attachment_filename_include"],
         )
         self.assertEqual(returned_rule1["maximum_age"], rule1["maximum_age"])
         self.assertEqual(returned_rule1["action"], rule1["action"])
@@ -438,6 +513,10 @@ class TestAPIMailRules(DirectoriesMixin, APITestCase):
             rule1["assign_document_type"],
         )
         self.assertEqual(returned_rule1["assign_tags"], rule1["assign_tags"])
+        self.assertEqual(
+            returned_rule1["assign_owner_from_rule"],
+            rule1["assign_owner_from_rule"],
+        )
 
     def test_delete_mail_rule(self):
         """
@@ -466,7 +545,7 @@ class TestAPIMailRules(DirectoriesMixin, APITestCase):
             filter_from="from@example.com",
             filter_subject="subject",
             filter_body="body",
-            filter_attachment_filename="file.pdf",
+            filter_attachment_filename_include="file.pdf",
             maximum_age=30,
             action=MailRule.MailAction.MARK_READ,
             assign_title_from=MailRule.TitleSource.FROM_SUBJECT,
@@ -510,7 +589,7 @@ class TestAPIMailRules(DirectoriesMixin, APITestCase):
             filter_from="from@example.com",
             filter_subject="subject",
             filter_body="body",
-            filter_attachment_filename="file.pdf",
+            filter_attachment_filename_include="file.pdf",
             maximum_age=30,
             action=MailRule.MailAction.MARK_READ,
             assign_title_from=MailRule.TitleSource.FROM_SUBJECT,
@@ -532,3 +611,72 @@ class TestAPIMailRules(DirectoriesMixin, APITestCase):
         returned_rule1 = MailRule.objects.get(pk=rule1.pk)
         self.assertEqual(returned_rule1.name, "Updated Name 1")
         self.assertEqual(returned_rule1.action, MailRule.MailAction.DELETE)
+
+    def test_get_mail_rules_owner_aware(self):
+        """
+        GIVEN:
+            - Configured rules with different users
+        WHEN:
+            - API call is made to get mail rules
+        THEN:
+            - Only unowned, owned by user or granted mail rules are provided
+        """
+
+        user2 = User.objects.create_user(username="temp_admin2")
+
+        account1 = MailAccount.objects.create(
+            name="Email1",
+            username="username1",
+            password="password1",
+            imap_server="server.example.com",
+            imap_port=443,
+            imap_security=MailAccount.ImapSecurity.SSL,
+            character_set="UTF-8",
+        )
+
+        rule1 = MailRule.objects.create(
+            name="Rule1",
+            account=account1,
+            folder="INBOX",
+            filter_from="from@example1.com",
+            order=0,
+        )
+
+        rule2 = MailRule.objects.create(
+            name="Rule2",
+            account=account1,
+            folder="INBOX",
+            filter_from="from@example2.com",
+            order=1,
+        )
+        rule2.owner = self.user
+        rule2.save()
+
+        rule3 = MailRule.objects.create(
+            name="Rule3",
+            account=account1,
+            folder="INBOX",
+            filter_from="from@example3.com",
+            order=2,
+        )
+        rule3.owner = user2
+        rule3.save()
+
+        rule4 = MailRule.objects.create(
+            name="Rule4",
+            account=account1,
+            folder="INBOX",
+            filter_from="from@example4.com",
+            order=3,
+        )
+        rule4.owner = user2
+        rule4.save()
+        assign_perm("view_mailrule", self.user, rule4)
+
+        response = self.client.get(self.ENDPOINT)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 3)
+        self.assertEqual(response.data["results"][0]["name"], rule1.name)
+        self.assertEqual(response.data["results"][1]["name"], rule2.name)
+        self.assertEqual(response.data["results"][2]["name"], rule4.name)

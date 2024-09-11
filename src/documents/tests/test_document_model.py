@@ -1,19 +1,16 @@
 import shutil
 import tempfile
+import zoneinfo
 from pathlib import Path
 from unittest import mock
 
-try:
-    import zoneinfo
-except ImportError:
-    from backports import zoneinfo
-
-from django.test import override_settings
 from django.test import TestCase
+from django.test import override_settings
 from django.utils import timezone
 
 from documents.models import Correspondent
 from documents.models import Document
+from documents.tasks import empty_trash
 
 
 class TestDocument(TestCase):
@@ -47,12 +44,40 @@ class TestDocument(TestCase):
 
         with mock.patch("documents.signals.handlers.os.unlink") as mock_unlink:
             document.delete()
+            empty_trash([document.pk])
             mock_unlink.assert_any_call(file_path)
             mock_unlink.assert_any_call(thumb_path)
             self.assertEqual(mock_unlink.call_count, 2)
 
-    def test_file_name(self):
+    def test_document_soft_delete(self):
+        document = Document.objects.create(
+            correspondent=Correspondent.objects.create(name="Test0"),
+            title="Title",
+            content="content",
+            checksum="checksum",
+            mime_type="application/pdf",
+        )
 
+        file_path = document.source_path
+        thumb_path = document.thumbnail_path
+
+        Path(file_path).touch()
+        Path(thumb_path).touch()
+
+        with mock.patch("documents.signals.handlers.os.unlink") as mock_unlink:
+            document.delete()
+            self.assertEqual(mock_unlink.call_count, 0)
+
+            self.assertEqual(Document.objects.count(), 0)
+
+            document.restore(strict=False)
+            self.assertEqual(Document.objects.count(), 1)
+
+            document.delete()
+            empty_trash([document.pk])
+            self.assertEqual(mock_unlink.call_count, 2)
+
+    def test_file_name(self):
         doc = Document(
             mime_type="application/pdf",
             title="test",
@@ -64,7 +89,6 @@ class TestDocument(TestCase):
         TIME_ZONE="Europe/Berlin",
     )
     def test_file_name_with_timezone(self):
-
         # See https://docs.djangoproject.com/en/4.0/ref/utils/#django.utils.timezone.now
         # The default for created is an aware datetime in UTC
         # This does that, just manually, with a fixed date
@@ -107,7 +131,6 @@ class TestDocument(TestCase):
         self.assertEqual(doc.get_public_filename(), "2020-01-01 test.pdf")
 
     def test_file_name_jpg(self):
-
         doc = Document(
             mime_type="image/jpeg",
             title="test",
@@ -116,7 +139,6 @@ class TestDocument(TestCase):
         self.assertEqual(doc.get_public_filename(), "2020-12-25 test.jpg")
 
     def test_file_name_unknown(self):
-
         doc = Document(
             mime_type="application/zip",
             title="test",
@@ -125,7 +147,6 @@ class TestDocument(TestCase):
         self.assertEqual(doc.get_public_filename(), "2020-12-25 test.zip")
 
     def test_file_name_invalid_type(self):
-
         doc = Document(
             mime_type="image/jpegasd",
             title="test",

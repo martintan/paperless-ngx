@@ -2,12 +2,12 @@ import logging
 import os
 from collections import defaultdict
 from pathlib import PurePath
-# import uuid
 
 import pathvalidate
 from django.conf import settings
 from django.template.defaultfilters import slugify
 from django.utils import timezone
+
 from documents.models import Document
 
 logger = logging.getLogger("paperless.filehandling")
@@ -125,9 +125,6 @@ def generate_unique_filename(doc, archive_filename=False):
             counter += 1
         else:
             return new_filename
-        # new_filename = str(uuid.uuid4()) + ".pdf"
-        # if not os.path.exists(os.path.join(root, new_filename)):
-        #     return new_filename
 
 
 def generate_filename(
@@ -145,7 +142,7 @@ def generate_filename(
                 f"Document has storage_path {doc.storage_path.id} "
                 f"({doc.storage_path.path}) set",
             )
-            filename_format = doc.storage_path.path + '/' + doc.original_filename
+            filename_format = doc.storage_path.path
 
         if filename_format is not None:
             tags = defaultdictNoStr(
@@ -221,12 +218,13 @@ def generate_filename(
                 tag_list=tag_list,
                 owner_username=owner_username_str,
                 original_name=original_name,
+                doc_pk=f"{doc.pk:07}",
             ).strip()
 
             if settings.FILENAME_FORMAT_REMOVE_NONE:
-                path = path.replace("-none-/", "")  # remove empty directories
+                path = path.replace("/-none-/", "/")  # remove empty directories
                 path = path.replace(" -none-", "")  # remove when spaced, with space
-                path = path.replace("-none-", "")  # remove rest of the occurences
+                path = path.replace("-none-", "")  # remove rest of the occurrences
 
             path = path.replace("-none-", "none")  # backward compatibility
             path = path.strip(os.sep)

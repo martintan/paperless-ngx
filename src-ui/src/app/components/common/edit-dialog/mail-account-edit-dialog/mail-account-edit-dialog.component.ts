@@ -2,12 +2,10 @@ import { Component, ViewChild } from '@angular/core'
 import { FormControl, FormGroup } from '@angular/forms'
 import { NgbActiveModal, NgbAlert } from '@ng-bootstrap/ng-bootstrap'
 import { EditDialogComponent } from 'src/app/components/common/edit-dialog/edit-dialog.component'
-import {
-  IMAPSecurity,
-  PaperlessMailAccount,
-} from 'src/app/data/paperless-mail-account'
+import { IMAPSecurity, MailAccount } from 'src/app/data/mail-account'
 import { MailAccountService } from 'src/app/services/rest/mail-account.service'
 import { UserService } from 'src/app/services/rest/user.service'
+import { SettingsService } from 'src/app/services/settings.service'
 
 const IMAP_SECURITY_OPTIONS = [
   { id: IMAPSecurity.None, name: $localize`No encryption` },
@@ -16,11 +14,11 @@ const IMAP_SECURITY_OPTIONS = [
 ]
 
 @Component({
-  selector: 'app-mail-account-edit-dialog',
+  selector: 'pngx-mail-account-edit-dialog',
   templateUrl: './mail-account-edit-dialog.component.html',
   styleUrls: ['./mail-account-edit-dialog.component.scss'],
 })
-export class MailAccountEditDialogComponent extends EditDialogComponent<PaperlessMailAccount> {
+export class MailAccountEditDialogComponent extends EditDialogComponent<MailAccount> {
   testActive: boolean = false
   testResult: string
   alertTimeout
@@ -30,9 +28,10 @@ export class MailAccountEditDialogComponent extends EditDialogComponent<Paperles
   constructor(
     service: MailAccountService,
     activeModal: NgbActiveModal,
-    userService: UserService
+    userService: UserService,
+    settingsService: SettingsService
   ) {
-    super(service, activeModal, userService)
+    super(service, activeModal, userService, settingsService)
   }
 
   getCreateTitle() {

@@ -1,7 +1,8 @@
-import documents.models as document_models
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+
+import documents.models as document_models
 
 
 class MailAccount(document_models.ModelWithOwner):
@@ -36,7 +37,7 @@ class MailAccount(document_models.ModelWithOwner):
 
     username = models.CharField(_("username"), max_length=256)
 
-    password = models.CharField(_("password"), max_length=256)
+    password = models.CharField(_("password"), max_length=2048)
 
     is_token = models.BooleanField(_("Is token authentication"), default=False)
 
@@ -58,13 +59,27 @@ class MailRule(document_models.ModelWithOwner):
     class Meta:
         verbose_name = _("mail rule")
         verbose_name_plural = _("mail rules")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["name", "owner"],
+                name="%(app_label)s_%(class)s_unique_name_owner",
+            ),
+            models.UniqueConstraint(
+                name="%(app_label)s_%(class)s_name_unique",
+                fields=["name"],
+                condition=models.Q(owner__isnull=True),
+            ),
+        ]
 
     class ConsumptionScope(models.IntegerChoices):
         ATTACHMENTS_ONLY = 1, _("Only process attachments.")
         EML_ONLY = 2, _("Process full Mail (with embedded attachments in file) as .eml")
-        EVERYTHING = 3, _(
-            "Process full Mail (with embedded attachments in file) as .eml "
-            "+ process attachments as separate documents",
+        EVERYTHING = (
+            3,
+            _(
+                "Process full Mail (with embedded attachments in file) as .eml "
+                "+ process attachments as separate documents",
+            ),
         )
 
     class AttachmentProcessing(models.IntegerChoices):
@@ -81,6 +96,7 @@ class MailRule(document_models.ModelWithOwner):
     class TitleSource(models.IntegerChoices):
         FROM_SUBJECT = 1, _("Use subject as title")
         FROM_FILENAME = 2, _("Use attachment filename as title")
+        NONE = 3, _("Do not assign title from rule")
 
     class CorrespondentSource(models.IntegerChoices):
         FROM_NOTHING = 1, _("Do not assign a correspondent")
@@ -88,7 +104,7 @@ class MailRule(document_models.ModelWithOwner):
         FROM_NAME = 3, _("Use name (or mail address if not available)")
         FROM_CUSTOM = 4, _("Use correspondent selected below")
 
-    name = models.CharField(_("name"), max_length=256, unique=True)
+    name = models.CharField(_("name"), max_length=256)
 
     order = models.IntegerField(_("order"), default=0)
 
@@ -137,13 +153,25 @@ class MailRule(document_models.ModelWithOwner):
         blank=True,
     )
 
-    filter_attachment_filename = models.CharField(
-        _("filter attachment filename"),
+    filter_attachment_filename_include = models.CharField(
+        _("filter attachment filename inclusive"),
         max_length=256,
         null=True,
         blank=True,
         help_text=_(
             "Only consume documents which entirely match this "
+            "filename if specified. Wildcards such as *.pdf or "
+            "*invoice* are allowed. Case insensitive.",
+        ),
+    )
+
+    filter_attachment_filename_exclude = models.CharField(
+        _("filter attachment filename exclusive"),
+        max_length=256,
+        null=True,
+        blank=True,
+        help_text=_(
+            "Do not consume documents which entirely match this "
             "filename if specified. Wildcards such as *.pdf or "
             "*invoice* are allowed. Case insensitive.",
         ),
@@ -224,12 +252,16 @@ class MailRule(document_models.ModelWithOwner):
         verbose_name=_("assign this correspondent"),
     )
 
+    assign_owner_from_rule = models.BooleanField(
+        _("Assign the rule owner to documents"),
+        default=True,
+    )
+
     def __str__(self):
         return f"{self.account.name}.{self.name}"
 
 
 class ProcessedMail(document_models.ModelWithOwner):
-
     rule = models.ForeignKey(
         MailRule,
         null=False,

@@ -2,14 +2,15 @@ import datetime
 import itertools
 import logging
 import os
-import re
+import ssl
 import tempfile
 import traceback
 from datetime import date
 from datetime import timedelta
 from fnmatch import fnmatch
-from typing import Dict
-from typing import List
+from pathlib import Path
+from typing import TYPE_CHECKING
+from typing import Optional
 from typing import Union
 
 import magic
@@ -21,6 +22,17 @@ from django.conf import settings
 from django.db import DatabaseError
 from django.utils.timezone import is_naive
 from django.utils.timezone import make_aware
+from imap_tools import AND
+from imap_tools import NOT
+from imap_tools import MailAttachment
+from imap_tools import MailBox
+from imap_tools import MailboxFolderSelectError
+from imap_tools import MailBoxUnencrypted
+from imap_tools import MailMessage
+from imap_tools import MailMessageFlags
+from imap_tools.mailbox import MailBoxTls
+from imap_tools.query import LogicOperator
+
 from documents.data_models import ConsumableDocument
 from documents.data_models import DocumentMetadataOverrides
 from documents.data_models import DocumentSource
@@ -28,15 +40,6 @@ from documents.loggers import LoggingMixin
 from documents.models import Correspondent
 from documents.parsers import is_mime_type_supported
 from documents.tasks import consume_file
-from imap_tools import AND
-from imap_tools import MailBox
-from imap_tools import MailboxFolderSelectError
-from imap_tools import MailBoxUnencrypted
-from imap_tools import MailMessage
-from imap_tools import MailMessageFlags
-from imap_tools import NOT
-from imap_tools.mailbox import MailBoxTls
-from imap_tools.query import LogicOperator
 from paperless_mail.models import MailAccount
 from paperless_mail.models import MailRule
 from paperless_mail.models import ProcessedMail
@@ -79,7 +82,7 @@ class BaseMailAction:
     read mails when the action is to mark mails as read).
     """
 
-    def get_criteria(self) -> Union[Dict, LogicOperator]:
+    def get_criteria(self) -> Union[dict, LogicOperator]:
         """
         Returns filtering criteria/query for this mail action.
         """
@@ -90,7 +93,7 @@ class BaseMailAction:
         M: MailBox,
         message_uid: str,
         parameter: str,
-    ):  # pragma: nocover
+    ):  # pragma: no cover
         """
         Perform mail action on the given mail uid in the mailbox.
         """
@@ -144,15 +147,13 @@ class TagMailAction(BaseMailAction):
     A mail action that tags mails after processing.
     """
 
-    def __init__(self, parameter):
-
+    def __init__(self, parameter: str, supports_gmail_labels: bool):
         # The custom tag should look like "apple:<color>"
         if "apple:" in parameter.lower():
-
             _, self.color = parameter.split(":")
             self.color = self.color.strip()
 
-            if self.color.lower() not in APPLE_MAIL_TAG_COLORS.keys():
+            if self.color.lower() not in APPLE_MAIL_TAG_COLORS:
                 raise MailError("Not a valid AppleMail tag color.")
 
             self.keyword = None
@@ -160,24 +161,26 @@ class TagMailAction(BaseMailAction):
         else:
             self.keyword = parameter
             self.color = None
+        self.supports_gmail_labels = supports_gmail_labels
 
     def get_criteria(self):
-
         # AppleMail: We only need to check if mails are \Flagged
         if self.color:
             return {"flagged": False}
         elif self.keyword:
-            return AND(NOT(gmail_label=self.keyword), no_keyword=self.keyword)
-        else:  # pragma: nocover
+            if self.supports_gmail_labels:
+                return AND(NOT(gmail_label=self.keyword), no_keyword=self.keyword)
+            else:
+                return {"no_keyword": self.keyword}
+        else:  # pragma: no cover
             raise ValueError("This should never happen.")
 
     def post_consume(self, M: MailBox, message_uid: str, parameter: str):
-        if re.search(r"gmail\.com$|googlemail\.com$", M._host):
+        if self.supports_gmail_labels:
             M.client.uid("STORE", message_uid, "+X-GM-LABELS", self.keyword)
 
         # AppleMail
         elif self.color:
-
             # Remove all existing $MailFlagBits
             M.flag(
                 message_uid,
@@ -204,7 +207,6 @@ def mailbox_login(mailbox: MailBox, account: MailAccount):
     logger = logging.getLogger("paperless_mail")
 
     try:
-
         if account.is_token:
             mailbox.xoauth2(account.username, account.password)
         else:
@@ -232,7 +234,7 @@ def mailbox_login(mailbox: MailBox, account: MailAccount):
 
 @shared_task
 def apply_mail_action(
-    result: List[str],
+    result: list[str],
     rule_id: int,
     message_uid: str,
     message_subject: str,
@@ -252,16 +254,18 @@ def apply_mail_action(
         message_date = make_aware(message_date)
 
     try:
-
-        action = get_rule_action(rule)
-
         with get_mailbox(
             server=account.imap_server,
             port=account.imap_port,
             security=account.imap_security,
         ) as M:
+            # Need to know the support for the possible tagging
+            supports_gmail_labels = "X-GM-EXT-1" in M.client.capabilities
+
             mailbox_login(M, account)
             M.folder.set(rule.folder)
+
+            action = get_rule_action(rule, supports_gmail_labels)
             action.post_consume(M, message_uid, rule.action_parameter)
 
         ProcessedMail.objects.create(
@@ -317,7 +321,7 @@ def error_callback(
 
 def queue_consumption_tasks(
     *,
-    consume_tasks: List[Signature],
+    consume_tasks: list[Signature],
     rule: MailRule,
     message: MailMessage,
 ):
@@ -342,7 +346,7 @@ def queue_consumption_tasks(
     ).delay()
 
 
-def get_rule_action(rule) -> BaseMailAction:
+def get_rule_action(rule: MailRule, supports_gmail_labels: bool) -> BaseMailAction:
     """
     Returns a BaseMailAction instance for the given rule.
     """
@@ -356,12 +360,12 @@ def get_rule_action(rule) -> BaseMailAction:
     elif rule.action == MailRule.MailAction.MARK_READ:
         return MarkReadMailAction()
     elif rule.action == MailRule.MailAction.TAG:
-        return TagMailAction(rule.action_parameter)
+        return TagMailAction(rule.action_parameter, supports_gmail_labels)
     else:
-        raise NotImplementedError("Unknown action.")  # pragma: nocover
+        raise NotImplementedError("Unknown action.")  # pragma: no cover
 
 
-def make_criterias(rule):
+def make_criterias(rule: MailRule, supports_gmail_labels: bool):
     """
     Returns criteria to be applied to MailBox.fetch for the given rule.
     """
@@ -379,9 +383,12 @@ def make_criterias(rule):
     if rule.filter_body:
         criterias["body"] = rule.filter_body
 
-    rule_query = get_rule_action(rule).get_criteria()
+    rule_query = get_rule_action(rule, supports_gmail_labels).get_criteria()
     if isinstance(rule_query, dict):
-        return AND(**rule_query, **criterias)
+        if len(rule_query) or len(criterias):
+            return AND(**rule_query, **criterias)
+        else:
+            return "ALL"
     else:
         return AND(rule_query, **criterias)
 
@@ -390,15 +397,18 @@ def get_mailbox(server, port, security) -> MailBox:
     """
     Returns the correct MailBox instance for the given configuration.
     """
+    ssl_context = ssl.create_default_context()
+    if settings.EMAIL_CERTIFICATE_FILE is not None:  # pragma: no cover
+        ssl_context.load_verify_locations(cafile=settings.EMAIL_CERTIFICATE_FILE)
 
     if security == MailAccount.ImapSecurity.NONE:
         mailbox = MailBoxUnencrypted(server, port)
     elif security == MailAccount.ImapSecurity.STARTTLS:
-        mailbox = MailBoxTls(server, port)
+        mailbox = MailBoxTls(server, port, ssl_context=ssl_context)
     elif security == MailAccount.ImapSecurity.SSL:
-        mailbox = MailBox(server, port)
+        mailbox = MailBox(server, port, ssl_context=ssl_context)
     else:
-        raise NotImplementedError("Unknown IMAP security")  # pragma: nocover
+        raise NotImplementedError("Unknown IMAP security")  # pragma: no cover
     return mailbox
 
 
@@ -416,26 +426,42 @@ class MailAccountHandler(LoggingMixin):
 
     logging_name = "paperless_mail"
 
-    def _correspondent_from_name(self, name):
+    def __init__(self) -> None:
+        super().__init__()
+        self.renew_logging_group()
+
+    def _correspondent_from_name(self, name: str) -> Optional[Correspondent]:
         try:
             return Correspondent.objects.get_or_create(name=name)[0]
         except DatabaseError as e:
-            self.log("error", f"Error while retrieving correspondent {name}: {e}")
+            self.log.error(f"Error while retrieving correspondent {name}: {e}")
             return None
 
-    def _get_title(self, message, att, rule):
+    def _get_title(
+        self,
+        message: MailMessage,
+        att: MailAttachment,
+        rule: MailRule,
+    ) -> Optional[str]:
         if rule.assign_title_from == MailRule.TitleSource.FROM_SUBJECT:
             return message.subject
 
         elif rule.assign_title_from == MailRule.TitleSource.FROM_FILENAME:
             return os.path.splitext(os.path.basename(att.filename))[0]
 
+        elif rule.assign_title_from == MailRule.TitleSource.NONE:
+            return None
+
         else:
             raise NotImplementedError(
                 "Unknown title selector.",
-            )  # pragma: nocover
+            )  # pragma: no cover
 
-    def _get_correspondent(self, message: MailMessage, rule):
+    def _get_correspondent(
+        self,
+        message: MailMessage,
+        rule: MailRule,
+    ) -> Optional[Correspondent]:
         c_from = rule.assign_correspondent_from
 
         if c_from == MailRule.CorrespondentSource.FROM_NOTHING:
@@ -457,7 +483,7 @@ class MailAccountHandler(LoggingMixin):
         else:
             raise NotImplementedError(
                 "Unknown correspondent selector",
-            )  # pragma: nocover
+            )  # pragma: no cover
 
     def handle_mail_account(self, account: MailAccount):
         """
@@ -466,7 +492,7 @@ class MailAccountHandler(LoggingMixin):
 
         self.renew_logging_group()
 
-        self.log("debug", f"Processing mail account {account}")
+        self.log.debug(f"Processing mail account {account}")
 
         total_processed_files = 0
         try:
@@ -475,17 +501,15 @@ class MailAccountHandler(LoggingMixin):
                 account.imap_port,
                 account.imap_security,
             ) as M:
-
                 supports_gmail_labels = "X-GM-EXT-1" in M.client.capabilities
                 supports_auth_plain = "AUTH=PLAIN" in M.client.capabilities
 
-                self.log("debug", f"GMAIL Label Support: {supports_gmail_labels}")
-                self.log("debug", f"AUTH=PLAIN Support: {supports_auth_plain}")
+                self.log.debug(f"GMAIL Label Support: {supports_gmail_labels}")
+                self.log.debug(f"AUTH=PLAIN Support: {supports_auth_plain}")
 
                 mailbox_login(M, account)
 
-                self.log(
-                    "debug",
+                self.log.debug(
                     f"Account {account}: Processing "
                     f"{account.rules.count()} rule(s)",
                 )
@@ -495,18 +519,16 @@ class MailAccountHandler(LoggingMixin):
                         total_processed_files += self._handle_mail_rule(
                             M,
                             rule,
+                            supports_gmail_labels,
                         )
                     except Exception as e:
-                        self.log(
-                            "error",
+                        self.log.exception(
                             f"Rule {rule}: Error while processing rule: {e}",
-                            exc_info=True,
                         )
         except MailError:
             raise
         except Exception as e:
-            self.log(
-                "error",
+            self.log.error(
                 f"Error while retrieving mailbox {account}: {e}",
                 exc_info=False,
             )
@@ -517,24 +539,21 @@ class MailAccountHandler(LoggingMixin):
         self,
         M: MailBox,
         rule: MailRule,
+        supports_gmail_labels: bool,
     ):
-
-        self.log("debug", f"Rule {rule}: Selecting folder {rule.folder}")
+        self.log.debug(f"Rule {rule}: Selecting folder {rule.folder}")
 
         try:
             M.folder.set(rule.folder)
         except MailboxFolderSelectError as err:
-
-            self.log(
-                "error",
+            self.log.error(
                 f"Unable to access folder {rule.folder}, attempting folder listing",
             )
             try:
                 for folder_info in M.folder.list():
-                    self.log("info", f"Located folder: {folder_info.name}")
+                    self.log.info(f"Located folder: {folder_info.name}")
             except Exception as e:
-                self.log(
-                    "error",
+                self.log.error(
                     "Exception during folder listing, unable to provide list folders: "
                     + str(e),
                 )
@@ -544,11 +563,10 @@ class MailAccountHandler(LoggingMixin):
                 f"does not exist in account {rule.account}",
             ) from err
 
-        criterias = make_criterias(rule)
+        criterias = make_criterias(rule, supports_gmail_labels)
 
-        self.log(
-            "debug",
-            f"Rule {rule}: Searching folder with criteria {str(criterias)}",
+        self.log.debug(
+            f"Rule {rule}: Searching folder with criteria {criterias}",
         )
 
         try:
@@ -556,6 +574,7 @@ class MailAccountHandler(LoggingMixin):
                 criteria=criterias,
                 mark_seen=False,
                 charset=rule.account.character_set,
+                bulk=True,
             )
         except Exception as err:
             raise MailError(
@@ -566,12 +585,17 @@ class MailAccountHandler(LoggingMixin):
         total_processed_files = 0
 
         for message in messages:
+            if TYPE_CHECKING:
+                assert isinstance(message, MailMessage)
+
             if ProcessedMail.objects.filter(
                 rule=rule,
                 uid=message.uid,
                 folder=rule.folder,
             ).exists():
-                self.log("debug", f"Skipping mail {message}, already processed.")
+                self.log.debug(
+                    f"Skipping mail '{message.uid}' subject '{message.subject}' from '{message.from_}', already processed.",
+                )
                 continue
 
             try:
@@ -580,13 +604,11 @@ class MailAccountHandler(LoggingMixin):
                 total_processed_files += processed_files
                 mails_processed += 1
             except Exception as e:
-                self.log(
-                    "error",
+                self.log.exception(
                     f"Rule {rule}: Error while processing mail {message.uid}: {e}",
-                    exc_info=True,
                 )
 
-        self.log("debug", f"Rule {rule}: Processed {mails_processed} matching mail(s)")
+        self.log.debug(f"Rule {rule}: Processed {mails_processed} matching mail(s)")
 
         return total_processed_files
 
@@ -601,15 +623,13 @@ class MailAccountHandler(LoggingMixin):
         ):
             return processed_elements
 
-        self.log(
-            "debug",
+        self.log.debug(
             f"Rule {rule}: "
             f"Processing mail {message.subject} from {message.from_} with "
             f"{len(message.attachments)} attachment(s)",
         )
 
-        correspondent = self._get_correspondent(message, rule)
-        tag_ids = [tag.id for tag in rule.assign_tags.all()]
+        tag_ids: list[int] = [tag.id for tag in rule.assign_tags.all()]
         doc_type = rule.assign_document_type
 
         if (
@@ -619,7 +639,6 @@ class MailAccountHandler(LoggingMixin):
             processed_elements += self._process_eml(
                 message,
                 rule,
-                correspondent,
                 tag_ids,
                 doc_type,
             )
@@ -631,7 +650,6 @@ class MailAccountHandler(LoggingMixin):
             processed_elements += self._process_attachments(
                 message,
                 rule,
-                correspondent,
                 tag_ids,
                 doc_type,
             )
@@ -642,36 +660,52 @@ class MailAccountHandler(LoggingMixin):
         self,
         message: MailMessage,
         rule: MailRule,
-        correspondent,
         tag_ids,
         doc_type,
     ):
         processed_attachments = 0
 
-        consume_tasks = list()
+        consume_tasks = []
 
         for att in message.attachments:
-
             if (
                 att.content_disposition != "attachment"
                 and rule.attachment_type
                 == MailRule.AttachmentProcessing.ATTACHMENTS_ONLY
             ):
-                self.log(
-                    "debug",
+                self.log.debug(
                     f"Rule {rule}: "
                     f"Skipping attachment {att.filename} "
                     f"with content disposition {att.content_disposition}",
                 )
                 continue
 
-            if rule.filter_attachment_filename and not fnmatch(
+            if rule.filter_attachment_filename_include and not fnmatch(
                 att.filename.lower(),
-                rule.filter_attachment_filename.lower(),
+                rule.filter_attachment_filename_include.lower(),
             ):
                 # Force the filename and pattern to the lowercase
                 # as this is system dependent otherwise
+                self.log.debug(
+                    f"Rule {rule}: "
+                    f"Skipping attachment {att.filename} "
+                    f"does not match pattern {rule.filter_attachment_filename_include}",
+                )
                 continue
+            elif rule.filter_attachment_filename_exclude and fnmatch(
+                att.filename.lower(),
+                rule.filter_attachment_filename_exclude.lower(),
+            ):
+                # Force the filename and pattern to the lowercase
+                # as this is system dependent otherwise
+                self.log.debug(
+                    f"Rule {rule}: "
+                    f"Skipping attachment {att.filename} "
+                    f"does match pattern {rule.filter_attachment_filename_exclude}",
+                )
+                continue
+
+            correspondent = self._get_correspondent(message, rule)
 
             title = self._get_title(message, att, rule)
 
@@ -680,25 +714,34 @@ class MailAccountHandler(LoggingMixin):
             mime_type = magic.from_buffer(att.payload, mime=True)
 
             if is_mime_type_supported(mime_type):
-
-                os.makedirs(settings.SCRATCH_DIR, exist_ok=True)
-                _, temp_filename = tempfile.mkstemp(
-                    prefix="paperless-mail-",
-                    dir=settings.SCRATCH_DIR,
-                )
-                with open(temp_filename, "wb") as f:
-                    f.write(att.payload)
-
-                self.log(
-                    "info",
+                self.log.info(
                     f"Rule {rule}: "
                     f"Consuming attachment {att.filename} from mail "
                     f"{message.subject} from {message.from_}",
                 )
 
+                settings.SCRATCH_DIR.mkdir(parents=True, exist_ok=True)
+
+                temp_dir = Path(
+                    tempfile.mkdtemp(
+                        prefix="paperless-mail-",
+                        dir=settings.SCRATCH_DIR,
+                    ),
+                )
+
+                attachment_name = pathvalidate.sanitize_filename(att.filename)
+                if attachment_name:
+                    temp_filename = temp_dir / attachment_name
+                else:  # pragma: no cover
+                    # Some cases may have no name (generally inline)
+                    temp_filename = temp_dir / "no-name-attachment"
+
+                temp_filename.write_bytes(att.payload)
+
                 input_doc = ConsumableDocument(
                     source=DocumentSource.MailFetch,
                     original_file=temp_filename,
+                    mailrule_id=rule.pk,
                 )
                 doc_overrides = DocumentMetadataOverrides(
                     title=title,
@@ -706,7 +749,11 @@ class MailAccountHandler(LoggingMixin):
                     correspondent_id=correspondent.id if correspondent else None,
                     document_type_id=doc_type.id if doc_type else None,
                     tag_ids=tag_ids,
-                    owner_id=rule.owner.id if rule.owner else None,
+                    owner_id=(
+                        rule.owner.id
+                        if (rule.assign_owner_from_rule and rule.owner)
+                        else None
+                    ),
                 )
 
                 consume_task = consume_file.s(
@@ -718,19 +765,34 @@ class MailAccountHandler(LoggingMixin):
 
                 processed_attachments += 1
             else:
-                self.log(
-                    "debug",
+                self.log.debug(
                     f"Rule {rule}: "
                     f"Skipping attachment {att.filename} "
                     f"since guessed mime type {mime_type} is not supported "
                     f"by paperless",
                 )
 
-        queue_consumption_tasks(
-            consume_tasks=consume_tasks,
-            rule=rule,
-            message=message,
-        )
+        if len(consume_tasks) > 0:
+            queue_consumption_tasks(
+                consume_tasks=consume_tasks,
+                rule=rule,
+                message=message,
+            )
+        else:
+            # No files to consume, just mark as processed if it wasn't by .eml processing
+            if not ProcessedMail.objects.filter(
+                rule=rule,
+                uid=message.uid,
+                folder=rule.folder,
+            ).exists():
+                ProcessedMail.objects.create(
+                    rule=rule,
+                    folder=rule.folder,
+                    uid=message.uid,
+                    subject=message.subject,
+                    received=message.date,
+                    status="PROCESSED_WO_CONSUMPTION",
+                )
 
         return processed_attachments
 
@@ -738,11 +800,10 @@ class MailAccountHandler(LoggingMixin):
         self,
         message: MailMessage,
         rule: MailRule,
-        correspondent,
         tag_ids,
         doc_type,
     ):
-        os.makedirs(settings.SCRATCH_DIR, exist_ok=True)
+        settings.SCRATCH_DIR.mkdir(parents=True, exist_ok=True)
         _, temp_filename = tempfile.mkstemp(
             prefix="paperless-mail-",
             dir=settings.SCRATCH_DIR,
@@ -769,8 +830,9 @@ class MailAccountHandler(LoggingMixin):
 
             f.write(message.obj.as_bytes())
 
-        self.log(
-            "info",
+        correspondent = self._get_correspondent(message, rule)
+
+        self.log.info(
             f"Rule {rule}: "
             f"Consuming eml from mail "
             f"{message.subject} from {message.from_}",
@@ -779,6 +841,7 @@ class MailAccountHandler(LoggingMixin):
         input_doc = ConsumableDocument(
             source=DocumentSource.MailFetch,
             original_file=temp_filename,
+            mailrule_id=rule.pk,
         )
         doc_overrides = DocumentMetadataOverrides(
             title=message.subject,

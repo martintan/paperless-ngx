@@ -4,6 +4,7 @@ Simple script which attempts to ping the Redis broker as set in the environment 
 a certain number of times, waiting a little bit in between
 
 """
+
 import os
 import sys
 import time
@@ -12,7 +13,6 @@ from typing import Final
 from redis import Redis
 
 if __name__ == "__main__":
-
     MAX_RETRY_COUNT: Final[int] = 5
     RETRY_SLEEP_SECONDS: Final[int] = 5
 
@@ -29,7 +29,7 @@ if __name__ == "__main__":
             except Exception as e:
                 print(
                     f"Redis ping #{attempt} failed.\n"
-                    f"Error: {str(e)}.\n"
+                    f"Error: {e!s}.\n"
                     f"Waiting {RETRY_SLEEP_SECONDS}s",
                     flush=True,
                 )

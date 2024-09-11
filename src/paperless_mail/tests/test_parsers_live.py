@@ -1,362 +1,58 @@
 import os
-import time
-from unittest import mock
-from urllib.error import HTTPError
-from urllib.request import urlopen
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
 
+import httpx
 import pytest
-from django.test import TestCase
-from documents.parsers import run_convert
-from documents.tests.utils import FileSystemAssertsMixin
 from imagehash import average_hash
-from paperless_mail.parsers import MailDocumentParser
-from pdfminer.high_level import extract_text
 from PIL import Image
+from pytest_mock import MockerFixture
+
+from documents.tests.utils import util_call_with_backoff
+from paperless_mail.parsers import MailDocumentParser
 
 
-class TestParserLive(FileSystemAssertsMixin, TestCase):
-    SAMPLE_FILES = os.path.join(os.path.dirname(__file__), "samples")
-
-    def setUp(self) -> None:
-        self.parser = MailDocumentParser(logging_group=None)
-
-    def tearDown(self) -> None:
-        self.parser.cleanup()
-
-    @staticmethod
-    def imagehash(file, hash_size=18):
-        return f"{average_hash(Image.open(file), hash_size)}"
-
-    def util_call_with_backoff(self, method_or_callable, args):
-        """
-        For whatever reason, the image started during the test pipeline likes to
-        segfault sometimes, when run with the exact files that usually pass.
-
-        So, this function will retry the parsing up to 3 times, with larger backoff
-        periods between each attempt, in hopes the issue resolves itself during
-        one attempt to parse.
-
-        This will wait the following:
-            - Attempt 1 - 20s following failure
-            - Attempt 2 - 40s following failure
-            - Attempt 3 - 80s following failure
-
-        """
-        result = None
-        succeeded = False
-        retry_time = 20.0
-        retry_count = 0
-        max_retry_count = 3
-
-        while retry_count < max_retry_count and not succeeded:
-            try:
-                result = method_or_callable(*args)
-
-                succeeded = True
-            except Exception as e:
-                print(f"{e} during try #{retry_count}", flush=True)
-
-                retry_count = retry_count + 1
-
-                time.sleep(retry_time)
-                retry_time = retry_time * 2.0
-
-        self.assertTrue(
-            succeeded,
-            "Continued Tika server errors after multiple retries",
+def extract_text(pdf_path: Path) -> str:
+    """
+    Using pdftotext from poppler, extracts the text of a PDF into a file,
+    then reads the file contents and returns it
+    """
+    with tempfile.NamedTemporaryFile(
+        mode="w+",
+    ) as tmp:
+        subprocess.run(
+            [
+                shutil.which("pdftotext"),
+                "-q",
+                "-layout",
+                "-enc",
+                "UTF-8",
+                str(pdf_path),
+                tmp.name,
+            ],
+            check=True,
         )
+        return tmp.read()
 
-        return result
 
-    @mock.patch("paperless_mail.parsers.MailDocumentParser.generate_pdf")
-    def test_get_thumbnail(self, mock_generate_pdf: mock.MagicMock):
-        """
-        GIVEN:
-            - Fresh start
-        WHEN:
-            - The Thumbnail is requested
-        THEN:
-            - The returned thumbnail image file is as expected
-        """
-        mock_generate_pdf.return_value = os.path.join(
-            self.SAMPLE_FILES,
-            "simple_text.eml.pdf",
-        )
-        thumb = self.parser.get_thumbnail(
-            os.path.join(self.SAMPLE_FILES, "simple_text.eml"),
-            "message/rfc822",
-        )
-        self.assertIsFile(thumb)
+class MailAttachmentMock:
+    def __init__(self, payload, content_id):
+        self.payload = payload
+        self.content_id = content_id
+        self.content_type = "image/png"
 
-        expected = os.path.join(self.SAMPLE_FILES, "simple_text.eml.pdf.webp")
 
-        self.assertEqual(
-            self.imagehash(thumb),
-            self.imagehash(expected),
-            f"Created Thumbnail {thumb} differs from expected file {expected}",
-        )
+@pytest.mark.skipif(
+    "PAPERLESS_CI_TEST" not in os.environ,
+    reason="No Gotenberg/Tika servers to test with",
+)
+class TestUrlCanary:
+    """
+    Verify certain URLs are still available so testing is valid still
+    """
 
-    @pytest.mark.skipif(
-        "TIKA_LIVE" not in os.environ,
-        reason="No tika server",
-    )
-    def test_tika_parse_successful(self):
-        """
-        GIVEN:
-            - Fresh start
-        WHEN:
-            - tika parsing is called
-        THEN:
-            - a web request to tika shall be done and the reply es returned
-        """
-        html = '<html><head><meta http-equiv="content-type" content="text/html; charset=UTF-8"></head><body><p>Some Text</p></body></html>'
-        expected_text = "Some Text"
-
-        # Check successful parsing
-        parsed = self.parser.tika_parse(html)
-        self.assertEqual(expected_text, parsed.strip())
-
-    @pytest.mark.skipif(
-        "TIKA_LIVE" not in os.environ,
-        reason="No tika server",
-    )
-    def test_tika_parse_unsuccessful(self):
-        """
-        GIVEN:
-            - Fresh start
-        WHEN:
-            - tika parsing fails
-        THEN:
-            - the parser should return an empty string
-        """
-        # Check unsuccessful parsing
-        parsed = self.parser.tika_parse(None)
-        self.assertEqual("", parsed)
-
-    @pytest.mark.skipif(
-        "GOTENBERG_LIVE" not in os.environ,
-        reason="No gotenberg server",
-    )
-    @mock.patch("paperless_mail.parsers.MailDocumentParser.generate_pdf_from_mail")
-    @mock.patch("paperless_mail.parsers.MailDocumentParser.generate_pdf_from_html")
-    def test_generate_pdf_gotenberg_merging(
-        self,
-        mock_generate_pdf_from_html: mock.MagicMock,
-        mock_generate_pdf_from_mail: mock.MagicMock,
-    ):
-        """
-        GIVEN:
-            - Intermediary pdfs to be merged
-        WHEN:
-            - pdf generation is requested with html file requiring merging of pdfs
-        THEN:
-            - gotenberg is called to merge files and the resulting file is returned
-        """
-        with open(os.path.join(self.SAMPLE_FILES, "first.pdf"), "rb") as first:
-            mock_generate_pdf_from_mail.return_value = first.read()
-
-        with open(os.path.join(self.SAMPLE_FILES, "second.pdf"), "rb") as second:
-            mock_generate_pdf_from_html.return_value = second.read()
-
-        pdf_path = self.util_call_with_backoff(
-            self.parser.generate_pdf,
-            [os.path.join(self.SAMPLE_FILES, "html.eml")],
-        )
-        self.assertIsFile(pdf_path)
-
-        extracted = extract_text(pdf_path)
-        expected = (
-            "first\tPDF\tto\tbe\tmerged.\n\n\x0csecond\tPDF\tto\tbe\tmerged.\n\n\x0c"
-        )
-        self.assertEqual(expected, extracted)
-
-    @pytest.mark.skipif(
-        "GOTENBERG_LIVE" not in os.environ,
-        reason="No gotenberg server",
-    )
-    def test_generate_pdf_from_mail_no_convert(self):
-        """
-        GIVEN:
-            - Fresh start
-        WHEN:
-            - pdf generation from simple eml file is requested
-        THEN:
-            - gotenberg is called and the resulting file is returned and contains the expected text.
-        """
-        mail = self.parser.get_parsed(os.path.join(self.SAMPLE_FILES, "html.eml"))
-
-        pdf_path = os.path.join(self.parser.tempdir, "html.eml.pdf")
-
-        with open(pdf_path, "wb") as file:
-            file.write(
-                self.util_call_with_backoff(self.parser.generate_pdf_from_mail, [mail]),
-            )
-
-        extracted = extract_text(pdf_path)
-        expected = extract_text(os.path.join(self.SAMPLE_FILES, "html.eml.pdf"))
-        self.assertEqual(expected, extracted)
-
-    @pytest.mark.skipif(
-        "GOTENBERG_LIVE" not in os.environ,
-        reason="No gotenberg server",
-    )
-    def test_generate_pdf_from_mail(self):
-        """
-        GIVEN:
-            - Fresh start
-        WHEN:
-            - pdf generation from simple eml file is requested
-        THEN:
-            - gotenberg is called and the resulting file is returned and look as expected.
-        """
-        mail = self.parser.get_parsed(os.path.join(self.SAMPLE_FILES, "html.eml"))
-
-        pdf_path = os.path.join(self.parser.tempdir, "html.eml.pdf")
-
-        with open(pdf_path, "wb") as file:
-            file.write(
-                self.util_call_with_backoff(self.parser.generate_pdf_from_mail, [mail]),
-            )
-
-        converted = os.path.join(
-            self.parser.tempdir,
-            "html.eml.pdf.webp",
-        )
-        run_convert(
-            density=300,
-            scale="500x5000>",
-            alpha="remove",
-            strip=True,
-            trim=False,
-            auto_orient=True,
-            input_file=f"{pdf_path}",  # Do net define an index to convert all pages.
-            output_file=converted,
-            logging_group=None,
-        )
-        self.assertIsFile(converted)
-        thumb_hash = self.imagehash(converted)
-
-        # The created pdf is not reproducible. But the converted image should always look the same.
-        expected_hash = self.imagehash(
-            os.path.join(self.SAMPLE_FILES, "html.eml.pdf.webp"),
-        )
-        self.assertEqual(
-            thumb_hash,
-            expected_hash,
-            f"PDF looks different. Check if {converted} looks weird.",
-        )
-
-    @pytest.mark.skipif(
-        "GOTENBERG_LIVE" not in os.environ,
-        reason="No gotenberg server",
-    )
-    def test_generate_pdf_from_html_no_convert(self):
-        """
-        GIVEN:
-            - Fresh start
-        WHEN:
-            - pdf generation from html eml file is requested
-        THEN:
-            - gotenberg is called and the resulting file is returned and contains the expected text.
-        """
-
-        class MailAttachmentMock:
-            def __init__(self, payload, content_id):
-                self.payload = payload
-                self.content_id = content_id
-
-        result = None
-
-        with open(os.path.join(self.SAMPLE_FILES, "sample.html")) as html_file:
-            with open(os.path.join(self.SAMPLE_FILES, "sample.png"), "rb") as png_file:
-                html = html_file.read()
-                png = png_file.read()
-                attachments = [
-                    MailAttachmentMock(png, "part1.pNdUSz0s.D3NqVtPg@example.de"),
-                ]
-                result = self.util_call_with_backoff(
-                    self.parser.generate_pdf_from_html,
-                    [html, attachments],
-                )
-
-        pdf_path = os.path.join(self.parser.tempdir, "sample.html.pdf")
-
-        with open(pdf_path, "wb") as file:
-            file.write(result)
-
-        extracted = extract_text(pdf_path)
-        expected = extract_text(os.path.join(self.SAMPLE_FILES, "sample.html.pdf"))
-        self.assertEqual(expected, extracted)
-
-    @pytest.mark.skipif(
-        "GOTENBERG_LIVE" not in os.environ,
-        reason="No gotenberg server",
-    )
-    def test_generate_pdf_from_html(self):
-        """
-        GIVEN:
-            - Fresh start
-        WHEN:
-            - pdf generation from html eml file is requested
-        THEN:
-            - gotenberg is called and the resulting file is returned and look as expected.
-        """
-
-        class MailAttachmentMock:
-            def __init__(self, payload, content_id):
-                self.payload = payload
-                self.content_id = content_id
-
-        result = None
-
-        with open(os.path.join(self.SAMPLE_FILES, "sample.html")) as html_file:
-            with open(os.path.join(self.SAMPLE_FILES, "sample.png"), "rb") as png_file:
-                html = html_file.read()
-                png = png_file.read()
-                attachments = [
-                    MailAttachmentMock(png, "part1.pNdUSz0s.D3NqVtPg@example.de"),
-                ]
-                result = self.util_call_with_backoff(
-                    self.parser.generate_pdf_from_html,
-                    [html, attachments],
-                )
-
-        pdf_path = os.path.join(self.parser.tempdir, "sample.html.pdf")
-
-        with open(pdf_path, "wb") as file:
-            file.write(result)
-
-        converted = os.path.join(self.parser.tempdir, "sample.html.pdf.webp")
-        run_convert(
-            density=300,
-            scale="500x5000>",
-            alpha="remove",
-            strip=True,
-            trim=False,
-            auto_orient=True,
-            input_file=f"{pdf_path}",  # Do net define an index to convert all pages.
-            output_file=converted,
-            logging_group=None,
-        )
-        self.assertIsFile(converted)
-        thumb_hash = self.imagehash(converted)
-
-        # The created pdf is not reproducible. But the converted image should always look the same.
-        expected_hash = self.imagehash(
-            os.path.join(self.SAMPLE_FILES, "sample.html.pdf.webp"),
-        )
-
-        self.assertEqual(
-            thumb_hash,
-            expected_hash,
-            f"PDF looks different. Check if {converted} looks weird. "
-            f"If Rick Astley is shown, Gotenberg loads from web which is bad for Mail content.",
-        )
-
-    @pytest.mark.skipif(
-        "GOTENBERG_LIVE" not in os.environ,
-        reason="No gotenberg server",
-    )
     def test_online_image_exception_on_not_available(self):
         """
         GIVEN:
@@ -371,18 +67,14 @@ class TestParserLive(FileSystemAssertsMixin, TestCase):
         whether this image stays online forever, so here we check if we can detect if is not
         available anymore.
         """
+        with pytest.raises(httpx.HTTPStatusError) as exec_info:
+            resp = httpx.get(
+                "https://upload.wikimedia.org/wikipedia/en/f/f7/nonexistent.png",
+            )
+            resp.raise_for_status()
 
-        # Start by Testing if nonexistent URL really throws an Exception
-        self.assertRaises(
-            HTTPError,
-            urlopen,
-            "https://upload.wikimedia.org/wikipedia/en/f/f7/nonexistent.png",
-        )
+        assert exec_info.value.response.status_code == httpx.codes.NOT_FOUND
 
-    @pytest.mark.skipif(
-        "GOTENBERG_LIVE" not in os.environ,
-        reason="No gotenberg server",
-    )
     def test_is_online_image_still_available(self):
         """
         GIVEN:
@@ -398,4 +90,142 @@ class TestParserLive(FileSystemAssertsMixin, TestCase):
         """
 
         # Now check the URL used in samples/sample.html
-        urlopen("https://upload.wikimedia.org/wikipedia/en/f/f7/RickRoll.png")
+        resp = httpx.get("https://upload.wikimedia.org/wikipedia/en/f/f7/RickRoll.png")
+        resp.raise_for_status()
+
+
+@pytest.mark.skipif(
+    "PAPERLESS_CI_TEST" not in os.environ,
+    reason="No Gotenberg/Tika servers to test with",
+)
+class TestParserLive:
+    @staticmethod
+    def imagehash(file, hash_size=18):
+        return f"{average_hash(Image.open(file), hash_size)}"
+
+    def test_get_thumbnail(
+        self,
+        mocker: MockerFixture,
+        mail_parser: MailDocumentParser,
+        simple_txt_email_file: Path,
+        simple_txt_email_pdf_file: Path,
+        simple_txt_email_thumbnail_file: Path,
+    ):
+        """
+        GIVEN:
+            - Fresh start
+        WHEN:
+            - The Thumbnail is requested
+        THEN:
+            - The returned thumbnail image file is as expected
+        """
+        mock_generate_pdf = mocker.patch(
+            "paperless_mail.parsers.MailDocumentParser.generate_pdf",
+        )
+        mock_generate_pdf.return_value = simple_txt_email_pdf_file
+
+        thumb = mail_parser.get_thumbnail(simple_txt_email_file, "message/rfc822")
+
+        assert thumb.exists()
+        assert thumb.is_file()
+
+        assert (
+            self.imagehash(thumb) == self.imagehash(simple_txt_email_thumbnail_file)
+        ), f"Created Thumbnail {thumb} differs from expected file {simple_txt_email_thumbnail_file}"
+
+    def test_tika_parse_successful(self, mail_parser: MailDocumentParser):
+        """
+        GIVEN:
+            - Fresh start
+        WHEN:
+            - tika parsing is called
+        THEN:
+            - a web request to tika shall be done and the reply es returned
+        """
+        html = '<html><head><meta http-equiv="content-type" content="text/html; charset=UTF-8"></head><body><p>Some Text</p></body></html>'
+        expected_text = "Some Text"
+
+        # Check successful parsing
+        parsed = mail_parser.tika_parse(html)
+        assert expected_text == parsed.strip()
+
+    def test_generate_pdf_gotenberg_merging(
+        self,
+        mocker: MockerFixture,
+        mail_parser: MailDocumentParser,
+        html_email_file: Path,
+        merged_pdf_first: Path,
+        merged_pdf_second: Path,
+    ):
+        """
+        GIVEN:
+            - Intermediary pdfs to be merged
+        WHEN:
+            - pdf generation is requested with html file requiring merging of pdfs
+        THEN:
+            - gotenberg is called to merge files and the resulting file is returned
+        """
+        mock_generate_pdf_from_html = mocker.patch(
+            "paperless_mail.parsers.MailDocumentParser.generate_pdf_from_html",
+        )
+        mock_generate_pdf_from_mail = mocker.patch(
+            "paperless_mail.parsers.MailDocumentParser.generate_pdf_from_mail",
+        )
+        mock_generate_pdf_from_mail.return_value = merged_pdf_first
+        mock_generate_pdf_from_html.return_value = merged_pdf_second
+
+        msg = mail_parser.parse_file_to_message(html_email_file)
+
+        _, pdf_path = util_call_with_backoff(
+            mail_parser.generate_pdf,
+            [msg],
+        )
+        assert pdf_path.exists()
+        assert pdf_path.is_file()
+
+        extracted = extract_text(pdf_path)
+        expected = (
+            "first   PDF   to   be   merged.\n\x0csecond PDF   to   be   merged.\n\x0c"
+        )
+
+        assert expected == extracted
+
+    def test_generate_pdf_from_mail(
+        self,
+        mail_parser: MailDocumentParser,
+        html_email_file: Path,
+        html_email_pdf_file: Path,
+        html_email_thumbnail_file: Path,
+    ):
+        """
+        GIVEN:
+            - Fresh start
+        WHEN:
+            - pdf generation from simple eml file is requested
+        THEN:
+            - Gotenberg is called and the resulting file is returned and look as expected.
+        """
+
+        util_call_with_backoff(mail_parser.parse, [html_email_file, "message/rfc822"])
+
+        # Check the archive PDF
+        archive_path = mail_parser.get_archive_path()
+        archive_text = extract_text(archive_path)
+        expected_archive_text = extract_text(html_email_pdf_file)
+
+        # Archive includes the HTML content, so use in
+        assert expected_archive_text in archive_text
+
+        # Check the thumbnail
+        generated_thumbnail = mail_parser.get_thumbnail(
+            html_email_file,
+            "message/rfc822",
+        )
+        generated_thumbnail_hash = self.imagehash(generated_thumbnail)
+
+        # The created pdf is not reproducible. But the converted image should always look the same.
+        expected_hash = self.imagehash(html_email_thumbnail_file)
+
+        assert (
+            generated_thumbnail_hash == expected_hash
+        ), f"PDF looks different. Check if {generated_thumbnail} looks weird."

@@ -1,17 +1,17 @@
 from django import forms
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
+from guardian.admin import GuardedModelAdmin
+
 from paperless_mail.models import MailAccount
 from paperless_mail.models import MailRule
 from paperless_mail.models import ProcessedMail
 
 
 class MailAccountAdminForm(forms.ModelForm):
-
     """Metadata classes used by Django admin to display the form."""
 
     class Meta:
-
         """Metadata class used by Django admin to display the form."""
 
         model = MailAccount
@@ -30,8 +30,7 @@ class MailAccountAdminForm(forms.ModelForm):
         ]
 
 
-class MailAccountAdmin(admin.ModelAdmin):
-
+class MailAccountAdmin(GuardedModelAdmin):
     list_display = ("name", "imap_server", "username")
 
     fieldsets = [
@@ -45,8 +44,7 @@ class MailAccountAdmin(admin.ModelAdmin):
     form = MailAccountAdminForm
 
 
-class MailRuleAdmin(admin.ModelAdmin):
-
+class MailRuleAdmin(GuardedModelAdmin):
     radio_fields = {
         "attachment_type": admin.VERTICAL,
         "action": admin.VERTICAL,
@@ -68,7 +66,8 @@ class MailRuleAdmin(admin.ModelAdmin):
                     "filter_to",
                     "filter_subject",
                     "filter_body",
-                    "filter_attachment_filename",
+                    "filter_attachment_filename_include",
+                    "filter_attachment_filename_exclude",
                     "maximum_age",
                     "consumption_scope",
                     "attachment_type",
@@ -118,10 +117,13 @@ class MailRuleAdmin(admin.ModelAdmin):
 
     ordering = ["order"]
 
+    raw_id_fields = ("assign_correspondent", "assign_document_type")
+
+    filter_horizontal = ("assign_tags",)
+
 
 class ProcessedMailAdmin(admin.ModelAdmin):
     class Meta:
-
         model = ProcessedMail
         fields = "__all__"
 

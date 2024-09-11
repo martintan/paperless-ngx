@@ -5,13 +5,14 @@ from pathlib import Path
 from typing import Final
 
 from django.conf import settings
-from documents.models import Document
 from tqdm import tqdm
+
+from documents.models import Document
 
 
 class SanityCheckMessages:
     def __init__(self):
-        self._messages = defaultdict(list)
+        self._messages: dict[int, list[dict]] = defaultdict(list)
         self.has_error = False
         self.has_warning = False
 
@@ -32,9 +33,8 @@ class SanityCheckMessages:
         if len(self._messages) == 0:
             logger.info("Sanity checker detected no issues.")
         else:
-
             # Query once
-            all_docs = Document.objects.all()
+            all_docs = Document.global_objects.all()
 
             for doc_pk in self._messages:
                 if doc_pk is not None:
@@ -68,7 +68,7 @@ def check_sanity(progress=False) -> SanityCheckMessages:
     if lockfile in present_files:
         present_files.remove(lockfile)
 
-    for doc in tqdm(Document.objects.all(), disable=not progress):
+    for doc in tqdm(Document.global_objects.all(), disable=not progress):
         # Check sanity of the thumbnail
         thumbnail_path: Final[Path] = Path(doc.thumbnail_path).resolve()
         if not thumbnail_path.exists() or not thumbnail_path.is_file():

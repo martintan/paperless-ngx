@@ -3,7 +3,7 @@ import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap'
 import { interval, Subject, take } from 'rxjs'
 
 @Component({
-  selector: 'app-confirm-dialog',
+  selector: 'pngx-confirm-dialog',
   templateUrl: './confirm-dialog.component.html',
   styleUrls: ['./confirm-dialog.component.scss'],
 })
@@ -38,6 +38,12 @@ export class ConfirmDialogComponent {
   alternativeBtnCaption
 
   @Input()
+  cancelBtnClass = 'btn-outline-secondary'
+
+  @Input()
+  cancelBtnCaption = $localize`Cancel`
+
+  @Input()
   buttonsEnabled = true
 
   confirmButtonEnabled = true
@@ -47,26 +53,6 @@ export class ConfirmDialogComponent {
 
   confirmSubject: Subject<boolean>
   alternativeSubject: Subject<boolean>
-
-  delayConfirm(seconds: number) {
-    const refreshInterval = 0.15 // s
-
-    this.secondsTotal = seconds
-    this.seconds = seconds
-
-    interval(refreshInterval * 1000)
-      .pipe(
-        take(this.secondsTotal / refreshInterval + 2) // need 2 more for animation to complete after 0
-      )
-      .subscribe((count) => {
-        this.seconds = Math.max(
-          0,
-          this.secondsTotal - refreshInterval * (count + 1)
-        )
-        this.confirmButtonEnabled =
-          this.secondsTotal - refreshInterval * count < 0
-      })
-  }
 
   cancel() {
     this.confirmSubject?.next(false)

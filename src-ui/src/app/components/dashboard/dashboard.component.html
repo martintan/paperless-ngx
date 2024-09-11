@@ -1,31 +1,49 @@
-<app-page-header title="Dashboard" [subTitle]="subtitle" i18n-title>
+<pngx-page-header title="Dashboard" [subTitle]="subtitle" i18n-title>
   <img src="assets/lbc.png" style="width: 150px" />
-</app-page-header>
+</pngx-page-header>
 
 <div class="row">
-  <div class="col-lg-8">
-    <ng-container *ngIf="savedViewService.loading">
-      <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-      <ng-container i18n>Loading...</ng-container>
-    </ng-container>
+  <div class="col-12 col-lg-8 col-xl-9 mb-4">
+    <div class="row row-cols-1 g-4"
+      cdkDropList
+      [cdkDropListDisabled]="settingsService.globalDropzoneActive"
+      (cdkDropListDropped)="onDrop($event)"
+      >
+      @if (savedViewService.loading) {
+        <div class="col">
+          <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+          <ng-container i18n>Loading...</ng-container>
+        </div>
+      }
 
-    <app-welcome-widget *ngIf="settingsService.offerTour()" tourAnchor="tour.dashboard"></app-welcome-widget>
+      @if (settingsService.offerTour()) {
+        <div class="col">
+          <pngx-welcome-widget (dismiss)="completeTour()"></pngx-welcome-widget>
+        </div>
+      }
 
-    <div *appIfPermissions="{ action: PermissionAction.View, type: PermissionType.SavedView }">
-      <ng-container *ngFor="let v of savedViewService.dashboardViews; first as isFirst">
-        <app-saved-view-widget *ngIf="isFirst; else noTour" [savedView]="v" tourAnchor="tour.dashboard"></app-saved-view-widget>
-        <ng-template #noTour>
-          <app-saved-view-widget [savedView]="v"></app-saved-view-widget>
-        </ng-template>
+      <ng-container *pngxIfPermissions="{ action: PermissionAction.View, type: PermissionType.SavedView }">
+        @for (v of dashboardViews; track v.id) {
+          <div class="col">
+            <pngx-saved-view-widget
+              [savedView]="v"
+              (cdkDragStarted)="onDragStart($event)"
+              (cdkDragEnded)="onDragEnd($event)"
+              >
+            </pngx-saved-view-widget>
+          </div>
+        }
       </ng-container>
     </div>
-
   </div>
-  <div class="col-lg-4">
-
-    <app-statistics-widget></app-statistics-widget>
-
-    <app-upload-file-widget></app-upload-file-widget>
-
+  <div class="col-12 col-lg-4 col-xl-3 col-sidebar">
+    <div class="row row-cols-1 g-4 mb-4 sticky-lg-top z-0">
+      <div class="col">
+        <pngx-statistics-widget *pngxIfPermissions="{ action: PermissionAction.View, type: PermissionType.UISettings }"></pngx-statistics-widget>
+      </div>
+      <div class="col">
+        <pngx-upload-file-widget></pngx-upload-file-widget>
+      </div>
+    </div>
   </div>
 </div>

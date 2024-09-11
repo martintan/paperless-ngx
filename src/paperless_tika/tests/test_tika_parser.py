@@ -1,66 +1,83 @@
 import datetime
-import os
+import zoneinfo
+from http import HTTPStatus
 from pathlib import Path
-from unittest import mock
 
-from django.test import override_settings
-from django.test import TestCase
+import pytest
+from httpx import codes
+from httpx._multipart import DataField
+from pytest_django.fixtures import SettingsWrapper
+from pytest_httpx import HTTPXMock
+
 from documents.parsers import ParseError
 from paperless_tika.parsers import TikaDocumentParser
-from requests import Response
-from rest_framework import status
 
 
-class TestTikaParser(TestCase):
-    def setUp(self) -> None:
-        self.parser = TikaDocumentParser(logging_group=None)
+@pytest.mark.django_db()
+class TestTikaParser:
+    def test_parse(
+        self,
+        httpx_mock: HTTPXMock,
+        settings: SettingsWrapper,
+        tika_parser: TikaDocumentParser,
+        sample_odt_file: Path,
+    ):
+        settings.TIME_ZONE = "America/Chicago"
+        # Pretend parse response
+        httpx_mock.add_response(
+            json={
+                "Content-Type": "application/vnd.oasis.opendocument.text",
+                "X-TIKA:Parsed-By": [],
+                "X-TIKA:content": "the content",
+                "dcterms:created": "2020-11-21T00:00:00",
+            },
+        )
+        # Pretend convert to PDF response
+        httpx_mock.add_response(content=b"PDF document")
 
-    def tearDown(self) -> None:
-        self.parser.cleanup()
+        tika_parser.parse(sample_odt_file, "application/vnd.oasis.opendocument.text")
 
-    @mock.patch("paperless_tika.parsers.parser.from_file")
-    @mock.patch("paperless_tika.parsers.requests.post")
-    def test_parse(self, post, from_file):
-        from_file.return_value = {
-            "content": "the content",
-            "metadata": {"Creation-Date": "2020-11-21"},
-        }
-        response = Response()
-        response._content = b"PDF document"
-        response.status_code = status.HTTP_200_OK
-        post.return_value = response
+        assert tika_parser.text == "the content"
+        assert tika_parser.archive_path is not None
+        with open(tika_parser.archive_path, "rb") as f:
+            assert f.read() == b"PDF document"
 
-        file = os.path.join(self.parser.tempdir, "input.odt")
-        Path(file).touch()
-        self.parser.parse(file, "application/vnd.oasis.opendocument.text")
+        assert tika_parser.date == datetime.datetime(
+            2020,
+            11,
+            21,
+            tzinfo=zoneinfo.ZoneInfo("America/Chicago"),
+        )
 
-        self.assertEqual(self.parser.text, "the content")
-        self.assertIsNotNone(self.parser.archive_path)
-        with open(self.parser.archive_path, "rb") as f:
-            self.assertEqual(f.read(), b"PDF document")
+    def test_metadata(
+        self,
+        httpx_mock: HTTPXMock,
+        tika_parser: TikaDocumentParser,
+        sample_odt_file: Path,
+    ):
+        httpx_mock.add_response(
+            json={
+                "Content-Type": "application/vnd.oasis.opendocument.text",
+                "X-TIKA:Parsed-By": [],
+                "Some-key": "value",
+                "dcterms:created": "2020-11-21T00:00:00",
+            },
+        )
 
-        self.assertEqual(self.parser.date, datetime.datetime(2020, 11, 21))
-
-    @mock.patch("paperless_tika.parsers.parser.from_file")
-    def test_metadata(self, from_file):
-        from_file.return_value = {
-            "metadata": {"Creation-Date": "2020-11-21", "Some-key": "value"},
-        }
-
-        file = os.path.join(self.parser.tempdir, "input.odt")
-        Path(file).touch()
-
-        metadata = self.parser.extract_metadata(
-            file,
+        metadata = tika_parser.extract_metadata(
+            sample_odt_file,
             "application/vnd.oasis.opendocument.text",
         )
 
-        self.assertTrue("Creation-Date" in [m["key"] for m in metadata])
-        self.assertTrue("Some-key" in [m["key"] for m in metadata])
+        assert "dcterms:created" in [m["key"] for m in metadata]
+        assert "Some-key" in [m["key"] for m in metadata]
 
-    @mock.patch("paperless_tika.parsers.parser.from_file")
-    @mock.patch("paperless_tika.parsers.requests.post")
-    def test_convert_failure(self, post, from_file):
+    def test_convert_failure(
+        self,
+        httpx_mock: HTTPXMock,
+        tika_parser: TikaDocumentParser,
+        sample_odt_file: Path,
+    ):
         """
         GIVEN:
             - Document needs to be converted to PDF
@@ -69,23 +86,30 @@ class TestTikaParser(TestCase):
         THEN:
             - Parse error is raised
         """
-        from_file.return_value = {
-            "content": "the content",
-            "metadata": {"Creation-Date": "2020-11-21"},
-        }
-        response = Response()
-        response._content = b"PDF document"
-        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-        post.return_value = response
+        # Pretend convert to PDF response
+        httpx_mock.add_response(status_code=HTTPStatus.INTERNAL_SERVER_ERROR)
 
-        file = os.path.join(self.parser.tempdir, "input.odt")
-        Path(file).touch()
+        with pytest.raises(ParseError):
+            tika_parser.convert_to_pdf(sample_odt_file, None)
 
-        with self.assertRaises(ParseError):
-            self.parser.convert_to_pdf(file, None)
-
-    @mock.patch("paperless_tika.parsers.requests.post")
-    def test_request_pdf_a_format(self, post: mock.Mock):
+    @pytest.mark.parametrize(
+        ("setting_value", "expected_form_value"),
+        [
+            ("pdfa", "PDF/A-2b"),
+            ("pdfa-1", "PDF/A-2b"),
+            ("pdfa-2", "PDF/A-2b"),
+            ("pdfa-3", "PDF/A-3b"),
+        ],
+    )
+    def test_request_pdf_a_format(
+        self,
+        setting_value: str,
+        expected_form_value: str,
+        httpx_mock: HTTPXMock,
+        settings: SettingsWrapper,
+        tika_parser: TikaDocumentParser,
+        sample_odt_file: Path,
+    ):
         """
         GIVEN:
             - Document needs to be converted to PDF
@@ -94,26 +118,21 @@ class TestTikaParser(TestCase):
         THEN:
             - Request to Gotenberg contains the expected PDF/A format string
         """
-        file = os.path.join(self.parser.tempdir, "input.odt")
-        Path(file).touch()
+        settings.OCR_OUTPUT_TYPE = setting_value
+        httpx_mock.add_response(
+            status_code=codes.OK,
+            content=b"PDF document",
+            method="POST",
+        )
 
-        response = Response()
-        response._content = b"PDF document"
-        response.status_code = status.HTTP_200_OK
-        post.return_value = response
+        tika_parser.convert_to_pdf(sample_odt_file, None)
 
-        for setting, expected_key in [
-            ("pdfa", "PDF/A-2b"),
-            ("pdfa-2", "PDF/A-2b"),
-            ("pdfa-1", "PDF/A-1a"),
-            ("pdfa-3", "PDF/A-3b"),
-        ]:
-            with override_settings(OCR_OUTPUT_TYPE=setting):
-                self.parser.convert_to_pdf(file, None)
+        request = httpx_mock.get_request()
+        found = False
+        for field in request.stream.fields:
+            if isinstance(field, DataField) and field.name == "pdfa":
+                assert field.value == expected_form_value
+                found = True
+        assert found, "pdfFormat was not found"
 
-                post.assert_called_once()
-                _, kwargs = post.call_args
-
-                self.assertEqual(kwargs["data"]["pdfFormat"], expected_key)
-
-                post.reset_mock()
+        httpx_mock.reset(assert_all_responses_were_requested=False)

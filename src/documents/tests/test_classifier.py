@@ -1,12 +1,14 @@
 import os
 import re
+import shutil
 from pathlib import Path
 from unittest import mock
 
 import pytest
 from django.conf import settings
-from django.test import override_settings
 from django.test import TestCase
+from django.test import override_settings
+
 from documents.classifier import ClassifierModelCorruptError
 from documents.classifier import DocumentClassifier
 from documents.classifier import IncompatibleClassifierVersionError
@@ -325,7 +327,6 @@ class TestClassifier(DirectoriesMixin, TestCase):
             classifier2.load()
 
     def testSaveClassifier(self):
-
         self.generate_train_and_save()
 
         new_classifier = DocumentClassifier()
@@ -335,7 +336,6 @@ class TestClassifier(DirectoriesMixin, TestCase):
         self.assertFalse(new_classifier.train())
 
     def test_load_and_classify(self):
-
         self.generate_train_and_save()
 
         new_classifier = DocumentClassifier()
@@ -415,7 +415,7 @@ class TestClassifier(DirectoriesMixin, TestCase):
         )
         doc2 = Document.objects.create(
             title="doc2",
-            content="this is a document from noone",
+            content="this is a document from no one",
             checksum="B",
         )
 
@@ -650,7 +650,7 @@ class TestClassifier(DirectoriesMixin, TestCase):
         Path(settings.MODEL_FILE).touch()
         self.assertTrue(os.path.exists(settings.MODEL_FILE))
 
-        load.side_effect = IncompatibleClassifierVersionError()
+        load.side_effect = IncompatibleClassifierVersionError("Dummey Error")
         self.assertIsNone(load_classifier())
         self.assertFalse(os.path.exists(settings.MODEL_FILE))
 
@@ -662,3 +662,14 @@ class TestClassifier(DirectoriesMixin, TestCase):
         load.side_effect = OSError()
         self.assertIsNone(load_classifier())
         self.assertTrue(os.path.exists(settings.MODEL_FILE))
+
+    def test_load_old_classifier_version(self):
+        shutil.copy(
+            os.path.join(os.path.dirname(__file__), "data", "v1.17.4.model.pickle"),
+            self.dirs.scratch_dir,
+        )
+        with override_settings(
+            MODEL_FILE=self.dirs.scratch_dir / "v1.17.4.model.pickle",
+        ):
+            classifier = load_classifier()
+            self.assertIsNone(classifier)

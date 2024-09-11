@@ -1,9 +1,11 @@
 import os
+from datetime import timedelta
 from unittest import mock
 
 from django.conf import settings
 from django.test import TestCase
 from django.utils import timezone
+
 from documents import tasks
 from documents.models import Correspondent
 from documents.models import Document
@@ -149,3 +151,36 @@ class TestBulkUpdate(DirectoriesMixin, TestCase):
         )
 
         tasks.bulk_update_documents([doc1.pk])
+
+
+class TestEmptyTrashTask(DirectoriesMixin, FileSystemAssertsMixin, TestCase):
+    """
+    GIVEN:
+        - Existing document in trash
+    WHEN:
+        - Empty trash task is called without doc_ids
+    THEN:
+        - Document is only deleted if it has been in trash for more than delay (default 30 days)
+    """
+
+    def test_empty_trash(self):
+        doc = Document.objects.create(
+            title="test",
+            content="my document",
+            checksum="wow",
+            added=timezone.now(),
+            created=timezone.now(),
+            modified=timezone.now(),
+        )
+
+        doc.delete()
+        self.assertEqual(Document.global_objects.count(), 1)
+        self.assertEqual(Document.objects.count(), 0)
+        tasks.empty_trash()
+        self.assertEqual(Document.global_objects.count(), 1)
+
+        doc.deleted_at = timezone.now() - timedelta(days=31)
+        doc.save()
+
+        tasks.empty_trash()
+        self.assertEqual(Document.global_objects.count(), 0)

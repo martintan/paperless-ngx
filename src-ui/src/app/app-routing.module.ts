@@ -1,5 +1,11 @@
 import { NgModule } from '@angular/core'
 import { RouterModule, Routes } from '@angular/router'
+import { ConfigComponent } from './components/admin/config/config.component'
+import { LogsComponent } from './components/admin/logs/logs.component'
+import { SettingsComponent } from './components/admin/settings/settings.component'
+import { TasksComponent } from './components/admin/tasks/tasks.component'
+import { TrashComponent } from './components/admin/trash/trash.component'
+import { UsersAndGroupsComponent } from './components/admin/users-groups/users-groups.component'
 import { AppFrameComponent } from './components/app-frame/app-frame.component'
 import { DashboardComponent } from './components/dashboard/dashboard.component'
 import { DocumentAsnComponent } from './components/document-asn/document-asn.component'
@@ -7,14 +13,13 @@ import { DocumentDetailComponent } from './components/document-detail/document-d
 import { DocumentListComponent } from './components/document-list/document-list.component'
 import { ExplorerComponent } from './components/explorer/explorer.component'
 import { CorrespondentListComponent } from './components/manage/correspondent-list/correspondent-list.component'
+import { CustomFieldsComponent } from './components/manage/custom-fields/custom-fields.component'
 import { DocumentTypeListComponent } from './components/manage/document-type-list/document-type-list.component'
-import { LogsComponent } from './components/manage/logs/logs.component'
-import { SettingsComponent } from './components/manage/settings/settings.component'
+import { MailComponent } from './components/manage/mail/mail.component'
 import { StoragePathListComponent } from './components/manage/storage-path-list/storage-path-list.component'
 import { TagListComponent } from './components/manage/tag-list/tag-list.component'
-import { TasksComponent } from './components/manage/tasks/tasks.component'
+import { WorkflowsComponent } from './components/manage/workflows/workflows.component'
 import { NotFoundComponent } from './components/not-found/not-found.component'
-import { ReportsComponent } from './components/reports/reports.component'
 import { DirtyDocGuard } from './guards/dirty-doc.guard'
 import { DirtyFormGuard } from './guards/dirty-form.guard'
 import { DirtySavedViewGuard } from './guards/dirty-saved-view.guard'
@@ -23,8 +28,9 @@ import {
   PermissionAction,
   PermissionType,
 } from './services/permissions.service'
+import { ReportsComponent } from './components/reports/reports.component'
 
-const routes: Routes = [
+export const routes: Routes = [
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
   {
     path: '',
@@ -154,11 +160,28 @@ const routes: Routes = [
         component: LogsComponent,
         canActivate: [PermissionsGuard],
         data: {
+          requireAdmin: true,
+        },
+      },
+      {
+        path: 'trash',
+        component: TrashComponent,
+        canActivate: [PermissionsGuard],
+        data: {
           requiredPermission: {
-            action: PermissionAction.View,
-            type: PermissionType.Admin,
+            action: PermissionAction.Delete,
+            type: PermissionType.Document,
           },
         },
+      },
+      // redirect old paths
+      {
+        path: 'settings/mail',
+        redirectTo: '/mail',
+      },
+      {
+        path: 'settings/usersgroups',
+        redirectTo: '/usersgroups',
       },
       {
         path: 'settings',
@@ -167,7 +190,7 @@ const routes: Routes = [
         canActivate: [PermissionsGuard],
         data: {
           requiredPermission: {
-            action: PermissionAction.View,
+            action: PermissionAction.Change,
             type: PermissionType.UISettings,
           },
         },
@@ -185,9 +208,15 @@ const routes: Routes = [
         },
       },
       {
-        path: 'settings/:section',
-        component: SettingsComponent,
-        canDeactivate: [DirtyFormGuard],
+        path: 'config',
+        component: ConfigComponent,
+        canActivate: [PermissionsGuard],
+        data: {
+          requiredPermission: {
+            action: PermissionAction.Change,
+            type: PermissionType.AppConfig,
+          },
+        },
       },
       {
         path: 'tasks',
@@ -200,7 +229,50 @@ const routes: Routes = [
           },
         },
       },
-      { path: 'tasks', component: TasksComponent },
+      {
+        path: 'customfields',
+        component: CustomFieldsComponent,
+        canActivate: [PermissionsGuard],
+        data: {
+          requiredPermission: {
+            action: PermissionAction.View,
+            type: PermissionType.CustomField,
+          },
+        },
+      },
+      {
+        path: 'workflows',
+        component: WorkflowsComponent,
+        canActivate: [PermissionsGuard],
+        data: {
+          requiredPermission: {
+            action: PermissionAction.View,
+            type: PermissionType.Workflow,
+          },
+        },
+      },
+      {
+        path: 'mail',
+        component: MailComponent,
+        canActivate: [PermissionsGuard],
+        data: {
+          requiredPermission: {
+            action: PermissionAction.View,
+            type: PermissionType.MailAccount,
+          },
+        },
+      },
+      {
+        path: 'usersgroups',
+        component: UsersAndGroupsComponent,
+        canActivate: [PermissionsGuard],
+        data: {
+          requiredPermission: {
+            action: PermissionAction.View,
+            type: PermissionType.User,
+          },
+        },
+      },
     ],
   },
 

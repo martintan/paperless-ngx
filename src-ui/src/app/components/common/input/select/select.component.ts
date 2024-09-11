@@ -16,7 +16,7 @@ import { AbstractInputComponent } from '../abstract-input'
       multi: true,
     },
   ],
-  selector: 'app-input-select',
+  selector: 'pngx-input-select',
   templateUrl: './select.component.html',
   styleUrls: ['./select.component.scss'],
 })
@@ -30,14 +30,39 @@ export class SelectComponent extends AbstractInputComponent<number> {
 
   @Input()
   set items(items) {
-    if (this.value && items.find((i) => i.id === this.value) === undefined) {
-      items.push({
-        id: this.value,
+    this._items = items
+    if (items && this.value) this.checkForPrivateItems(this.value)
+  }
+
+  @Input()
+  set itemsArray(items: any[]) {
+    this._items = items.map((item, index) => ({ id: index, name: item }))
+  }
+
+  writeValue(newValue: any): void {
+    if (newValue && this._items) {
+      this.checkForPrivateItems(newValue)
+      this.items = [...this._items] // we need to explicitly re-set items
+    }
+    super.writeValue(newValue)
+  }
+
+  checkForPrivateItems(value: any) {
+    if (Array.isArray(value)) {
+      if (value.length > 0) value.forEach((id) => this.checkForPrivateItem(id))
+    } else {
+      this.checkForPrivateItem(value)
+    }
+  }
+
+  checkForPrivateItem(id) {
+    if (this._items.find((i) => i.id === id) === undefined) {
+      this._items.push({
+        id: id,
         name: $localize`Private`,
         private: true,
       })
     }
-    this._items = items
   }
 
   get items(): any[] {
@@ -65,15 +90,30 @@ export class SelectComponent extends AbstractInputComponent<number> {
   @Input()
   bindLabel: string = 'name'
 
+  @Input()
+  showFilter: boolean = false
+
+  @Input()
+  notFoundText: string = $localize`No items found`
+
+  @Input()
+  disableCreateNew: boolean = false
+
+  @Input()
+  hideAddButton: boolean = false
+
   @Output()
   createNew = new EventEmitter<string>()
+
+  @Output()
+  filterDocuments = new EventEmitter<any[]>()
 
   public addItemRef: (name) => void
 
   private _lastSearchTerm: string
 
   get allowCreateNew(): boolean {
-    return this.createNew.observers.length > 0
+    return !this.disableCreateNew && this.createNew.observers.length > 0
   }
 
   get isPrivate(): boolean {
@@ -90,7 +130,7 @@ export class SelectComponent extends AbstractInputComponent<number> {
     }
   }
 
-  addItem(name: string) {
+  addItem(name: string = null) {
     if (name) this.createNew.next(name)
     else this.createNew.next(this._lastSearchTerm)
     this.clearLastSearchTerm()
@@ -113,5 +153,13 @@ export class SelectComponent extends AbstractInputComponent<number> {
     setTimeout(() => {
       this.clearLastSearchTerm()
     }, 3000)
+  }
+
+  onFilterDocuments() {
+    this.filterDocuments.emit([this.items.find((i) => i.id === this.value)])
+  }
+
+  get filterButtonTitle() {
+    return $localize`Filter documents with this ${this.title}`
   }
 }

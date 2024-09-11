@@ -3,29 +3,31 @@ import { FormControl, FormGroup, Validators } from '@angular/forms'
 import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap'
 import { first } from 'rxjs'
 import { EditDialogComponent } from 'src/app/components/common/edit-dialog/edit-dialog.component'
-import { PaperlessGroup } from 'src/app/data/paperless-group'
-import { PaperlessUser } from 'src/app/data/paperless-user'
+import { Group } from 'src/app/data/group'
+import { User } from 'src/app/data/user'
 import { GroupService } from 'src/app/services/rest/group.service'
 import { UserService } from 'src/app/services/rest/user.service'
+import { SettingsService } from 'src/app/services/settings.service'
 
 @Component({
-  selector: 'app-user-edit-dialog',
+  selector: 'pngx-user-edit-dialog',
   templateUrl: './user-edit-dialog.component.html',
   styleUrls: ['./user-edit-dialog.component.scss'],
 })
 export class UserEditDialogComponent
-  extends EditDialogComponent<PaperlessUser>
+  extends EditDialogComponent<User>
   implements OnInit
 {
-  groups: PaperlessGroup[]
+  groups: Group[]
   passwordIsSet: boolean = false
 
   constructor(
     service: UserService,
     activeModal: NgbActiveModal,
-    groupsService: GroupService
+    groupsService: GroupService,
+    settingsService: SettingsService
   ) {
-    super(service, activeModal, service)
+    super(service, activeModal, service, settingsService)
 
     groupsService
       .listAll()
@@ -57,6 +59,7 @@ export class UserEditDialogComponent
       first_name: new FormControl(''),
       last_name: new FormControl(''),
       is_active: new FormControl(true),
+      is_staff: new FormControl(true),
       is_superuser: new FormControl(false),
       groups: new FormControl([]),
       user_permissions: new FormControl([]),

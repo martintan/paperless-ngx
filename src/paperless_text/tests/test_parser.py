@@ -1,31 +1,37 @@
-import os
+from pathlib import Path
 
-from django.test import TestCase
-from documents.tests.utils import DirectoriesMixin
-from documents.tests.utils import FileSystemAssertsMixin
 from paperless_text.parsers import TextDocumentParser
 
 
-class TestTextParser(DirectoriesMixin, FileSystemAssertsMixin, TestCase):
-    def test_thumbnail(self):
-
-        parser = TextDocumentParser(None)
-
+class TestTextParser:
+    def test_thumbnail(self, text_parser: TextDocumentParser, sample_txt_file: Path):
         # just make sure that it does not crash
-        f = parser.get_thumbnail(
-            os.path.join(os.path.dirname(__file__), "samples", "test.txt"),
-            "text/plain",
-        )
-        self.assertIsFile(f)
+        f = text_parser.get_thumbnail(sample_txt_file, "text/plain")
+        assert f.exists()
+        assert f.is_file()
 
-    def test_parse(self):
+    def test_parse(self, text_parser: TextDocumentParser, sample_txt_file: Path):
+        text_parser.parse(sample_txt_file, "text/plain")
 
-        parser = TextDocumentParser(None)
+        assert text_parser.get_text() == "This is a test file.\n"
+        assert text_parser.get_archive_path() is None
 
-        parser.parse(
-            os.path.join(os.path.dirname(__file__), "samples", "test.txt"),
-            "text/plain",
-        )
+    def test_parse_invalid_bytes(
+        self,
+        text_parser: TextDocumentParser,
+        malformed_txt_file: Path,
+    ):
+        """
+        GIVEN:
+            - Text file which contains invalid UTF bytes
+        WHEN:
+            - The file is parsed
+        THEN:
+            - Parsing continues
+            - Invalid bytes are removed
+        """
 
-        self.assertEqual(parser.get_text(), "This is a test file.\n")
-        self.assertIsNone(parser.get_archive_path())
+        text_parser.parse(malformed_txt_file, "text/plain")
+
+        assert text_parser.get_text() == "Pantothens�ure\n"
+        assert text_parser.get_archive_path() is None
