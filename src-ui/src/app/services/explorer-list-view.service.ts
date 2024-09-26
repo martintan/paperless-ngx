@@ -1,21 +1,18 @@
 import { Injectable } from '@angular/core'
 import { ParamMap, Router } from '@angular/router'
 import { Observable } from 'rxjs'
-import { FilterRule, isFullTextFilterRule } from '../data/filter-rule'
-import { PaperlessDocument } from '../data/paperless-document'
-import { PaperlessStoragePath } from '../data/paperless-storage-path'
-import { SETTINGS_KEYS } from '../data/paperless-uisettings'
+import { Document, DOCUMENT_SORT_FIELDS } from '../data/document'
+import { FilterRule } from '../data/filter-rule'
 import { DOCUMENT_LIST_SERVICE } from '../data/storage-keys'
+import { StoragePath } from '../data/storage-path'
+import { SETTINGS_KEYS } from '../data/ui-settings'
+import { isFullTextFilterRule } from '../utils/filter-rules'
 import { paramsToViewState } from '../utils/query-params'
 import {
   CustomStoragePathService,
   FileOrFolderItem,
 } from './rest/custom-storage-path.service'
-import {
-  DOCUMENT_SORT_FIELDS,
-  DocumentService,
-  SelectionData,
-} from './rest/document.service'
+import { DocumentService, SelectionData } from './rest/document.service'
 import { SettingsService } from './settings.service'
 
 /**
@@ -61,7 +58,7 @@ export interface ListViewState {
 
   storagePathId?: number | null
 
-  parentStoragePath?: PaperlessStoragePath | null
+  parentStoragePath?: StoragePath | null
 }
 
 /**
@@ -172,7 +169,7 @@ export class ExplorerListViewService {
     // }
   }
 
-  getStoragePathByPath(path: string): Observable<PaperlessStoragePath> {
+  getStoragePathByPath(path: string): Observable<StoragePath> {
     return this.storagePathService.getByPath(path)
   }
 
@@ -460,18 +457,18 @@ export class ExplorerListViewService {
     })
   }
 
-  isSelected(d: PaperlessDocument) {
+  isSelected(d: Document) {
     return this.selected.has(d.id)
   }
 
-  toggleSelected(d: PaperlessDocument): void {
+  toggleSelected(d: Document): void {
     if (this.selected.has(d.id)) this.selected.delete(d.id)
     else this.selected.add(d.id)
     this.rangeSelectionAnchorIndex = this.documentIndexInCurrentView(d.id)
     this.lastRangeSelectionToIndex = null
   }
 
-  selectRangeTo(d: PaperlessDocument) {
+  selectRangeTo(d: Document) {
     if (this.rangeSelectionAnchorIndex !== null) {
       const documentToIndex = this.documentIndexInCurrentView(d.id)
       const fromIndex = Math.min(

@@ -10,14 +10,17 @@ import { ActivatedRoute, Router } from '@angular/router'
 import { NgbModal } from '@ng-bootstrap/ng-bootstrap'
 import { Subject, takeUntil } from 'rxjs'
 import {
-  FilterRule,
   filterRulesDiffer,
   isFullTextFilterRule,
-} from 'src/app/data/filter-rule'
+} from 'src/app/utils/filter-rules'
 import { FILTER_FULLTEXT_MORELIKE } from 'src/app/data/filter-rule-type'
-import { PaperlessDocument } from 'src/app/data/paperless-document'
-import { PaperlessSavedView } from 'src/app/data/paperless-saved-view'
-import { SETTINGS_KEYS } from 'src/app/data/paperless-uisettings'
+import {
+  Document,
+  DOCUMENT_SORT_FIELDS,
+  DOCUMENT_SORT_FIELDS_FULLTEXT,
+} from 'src/app/data/document'
+import { SavedView } from 'src/app/data/saved-view'
+import { SETTINGS_KEYS } from 'src/app/data/ui-settings'
 import {
   SortEvent,
   SortableDirective,
@@ -26,10 +29,6 @@ import { ConsumerStatusService } from 'src/app/services/consumer-status.service'
 import { ExplorerListViewService } from 'src/app/services/explorer-list-view.service'
 import { OpenDocumentsService } from 'src/app/services/open-documents.service'
 import { FileOrFolderItem } from 'src/app/services/rest/custom-storage-path.service'
-import {
-  DOCUMENT_SORT_FIELDS,
-  DOCUMENT_SORT_FIELDS_FULLTEXT,
-} from 'src/app/services/rest/document.service'
 import { SavedViewService } from 'src/app/services/rest/saved-view.service'
 import { SettingsService } from 'src/app/services/settings.service'
 import { ToastService } from 'src/app/services/toast.service'
@@ -38,6 +37,7 @@ import { UploadLargeFileComponent } from '../common/create-dialog/upload-large-f
 import { ComponentWithPermissions } from '../with-permissions/with-permissions.component'
 import { FilterEditorComponent } from './filter-editor/filter-editor.component'
 import { DocumentListViewService } from 'src/app/services/document-list-view.service'
+import { FilterRule } from 'src/app/data/filter-rule'
 
 @Component({
   selector: 'app-explorer',
@@ -71,7 +71,7 @@ export class ExplorerComponent
   displayMode = 'smallCards' // largeCards, smallCards, details
 
   unmodifiedFilterRules: FilterRule[] = []
-  private unmodifiedSavedView: PaperlessSavedView
+  private unmodifiedSavedView: SavedView
 
   private unsubscribeNotifier: Subject<any> = new Subject()
 
@@ -211,7 +211,7 @@ export class ExplorerComponent
     }
   }
 
-  toggleSelected(document: PaperlessDocument, event: MouseEvent): void {
+  toggleSelected(document: Document, event: MouseEvent): void {
     if (!event.shiftKey) this.documentList.toggleSelected(document)
     else this.documentList.selectRangeTo(document)
     if (!event.shiftKey) this.list.toggleSelected(document)
@@ -244,7 +244,7 @@ export class ExplorerComponent
     ])
   }
 
-  trackByDocumentId(index, item: PaperlessDocument) {
+  trackByDocumentId(index, item: Document) {
     return item.id
   }
 

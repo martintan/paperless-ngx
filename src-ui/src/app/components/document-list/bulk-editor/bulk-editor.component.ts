@@ -43,6 +43,7 @@ import { CustomField } from 'src/app/data/custom-field'
 import { CustomFieldsService } from 'src/app/services/rest/custom-fields.service'
 import { CustomFieldEditDialogComponent } from '../../common/edit-dialog/custom-field-edit-dialog/custom-field-edit-dialog.component'
 import { OpenDocumentsService } from 'src/app/services/open-documents.service'
+import { ConfirmDialogComponent } from '../../common/confirm-dialog/confirm-dialog.component'
 
 @Component({
   selector: 'pngx-bulk-editor',
@@ -344,8 +345,9 @@ export class BulkEditorComponent
         .join(
           $localize`:this is used to separate enumerations and should probably be a comma and a whitespace in most languages:, `
         )
-      return $localize`:this is for messages like 'modify "tag1", "tag2" and "tag3"':${list} and "${items[items.length - 1].name
-        }"`
+      return $localize`:this is for messages like 'modify "tag1", "tag2" and "tag3"':${list} and "${
+        items[items.length - 1].name
+      }"`
     }
   }
 
@@ -727,11 +729,11 @@ export class BulkEditorComponent
     this.awaitingDownload = true
     let downloadFileType: string =
       this.downloadForm.get('downloadFileTypeArchive').value &&
-        this.downloadForm.get('downloadFileTypeOriginals').value
+      this.downloadForm.get('downloadFileTypeOriginals').value
         ? 'both'
         : this.downloadForm.get('downloadFileTypeArchive').value
-          ? 'archive'
-          : 'originals'
+        ? 'archive'
+        : 'originals'
     this.documentService
       .bulkDownload(
         Array.from(this.list.selected),

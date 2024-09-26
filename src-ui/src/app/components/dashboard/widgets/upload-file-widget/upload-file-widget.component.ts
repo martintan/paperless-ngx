@@ -126,9 +126,7 @@ export class UploadFileWidgetComponent extends ComponentWithPermissions {
   public fileLeave(event) {}
 
   public dropped(files: NgxFileDropEntry[]) {
-    this.uploadDocumentsService.uploadFiles(files, {
-      isUploadWithFolders: true,
-    })
+    this.uploadDocumentsService.uploadDroppedFiles(files)
   }
 
   public onFileSelected(event: Event) {

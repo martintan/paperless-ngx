@@ -4,13 +4,14 @@ import { ActivatedRoute } from '@angular/router'
 import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap'
 import { NgxFileDropEntry } from 'ngx-file-drop'
 import { Subscription } from 'rxjs'
+import { Document } from 'src/app/data/document'
 import { DEFAULT_MATCHING_ALGORITHM } from 'src/app/data/matching-model'
-import { PaperlessDocument } from 'src/app/data/paperless-document'
 import { StoragePathService } from 'src/app/services/rest/storage-path.service'
 import { UserService } from 'src/app/services/rest/user.service'
 import { ToastService } from 'src/app/services/toast.service'
 import { UploadDocumentsService } from 'src/app/services/upload-documents.service'
 import { EditDialogComponent } from '../../edit-dialog/edit-dialog.component'
+import { SettingsService } from 'src/app/services/settings.service'
 
 @Component({
   selector: 'app-upload-large-file',
@@ -18,15 +19,16 @@ import { EditDialogComponent } from '../../edit-dialog/edit-dialog.component'
   styleUrls: ['./upload-large-file.component.scss'],
 })
 export class UploadLargeFileComponent
-  extends EditDialogComponent<PaperlessDocument>
-  implements OnInit {
+  extends EditDialogComponent<Document>
+  implements OnInit
+{
   nameSub: Subscription
 
   // File upload related variables
   private fileLeaveTimeoutID: any
   fileIsOver: boolean = false
   hideFileDrop: boolean = true
-  files: NgxFileDropEntry[];
+  files: NgxFileDropEntry[]
 
   constructor(
     private route: ActivatedRoute,
@@ -34,9 +36,10 @@ export class UploadLargeFileComponent
     private toastService: ToastService,
     service: StoragePathService,
     activeModal: NgbActiveModal,
-    userService: UserService
+    userService: UserService,
+    settingsService: SettingsService
   ) {
-    super(service, activeModal, userService)
+    super(service, activeModal, userService, settingsService)
   }
 
   ngOnInit(): void {
@@ -54,14 +57,18 @@ export class UploadLargeFileComponent
     // this.objectForm.get('name').patchValue(this.objectForm.get('path').value)
     // this.save()
 
+    // [martin::start]
     let storagePathId = parseInt(this.route.snapshot.queryParams['spid'])
     storagePathId = !isNaN(storagePathId) ? storagePathId : undefined
     this.toastService.showInfo($localize`Initiating large file upload...`, 3000)
-    this.uploadDocumentsService.uploadFiles(this.files, {
-      storagePathId, 
-      isLargeFile: true, 
-      ocrSpecificPages: this.objectForm.get('ocr_pages').value 
-    })
+    // this.uploadDocumentsService.uploadFiles(this.files, {
+    //   storagePathId,
+    //   isLargeFile: true,
+    //   ocrSpecificPages: this.objectForm.get('ocr_pages').value,
+    // })
+
+    this.uploadDocumentsService.uploadDroppedFiles(this.files)
+    // [martin::end]
   }
 
   getForm(): FormGroup<any> {
@@ -73,7 +80,7 @@ export class UploadLargeFileComponent
       match: new FormControl(''),
       is_insensitive: new FormControl(true),
       permissions_form: new FormControl(null),
-      ocr_pages: new FormControl('')
+      ocr_pages: new FormControl(''),
     })
   }
 
@@ -101,6 +108,6 @@ export class UploadLargeFileComponent
 
   public dropped(files: NgxFileDropEntry[]) {
     this.fileLeave(true)
-    this.files = files;
+    this.files = files
   }
 }

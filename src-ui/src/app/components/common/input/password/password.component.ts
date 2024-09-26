@@ -1,5 +1,5 @@
 import { Component, Input, forwardRef } from '@angular/core'
-import { NG_VALUE_ACCESSOR } from '@angular/forms'
+import { FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms'
 import { PasswordStrengthMeterComponent } from 'angular-password-strength-meter'
 import { AbstractInputComponent } from '../abstract-input'
 
@@ -11,10 +11,11 @@ import { AbstractInputComponent } from '../abstract-input'
       multi: true,
     },
   ],
-  imports: [PasswordStrengthMeterComponent],
+  imports: [PasswordStrengthMeterComponent, FormsModule],
   selector: 'pngx-input-password',
   templateUrl: './password.component.html',
   styleUrls: ['./password.component.scss'],
+  standalone: true,
 })
 export class PasswordComponent extends AbstractInputComponent<string> {
   @Input()

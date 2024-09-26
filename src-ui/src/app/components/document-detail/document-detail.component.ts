@@ -498,6 +498,8 @@ export class DocumentDetailComponent
               .shift()?.value
 
             metadata.clear()
+            // [martin::start]
+            // @ts-ignore
             documentType.default_metadata?.forEach((m) => {
               const latestValue = latestMetadata?.find(
                 (lm) => lm.name.toLowerCase() === m.name.toLowerCase()
@@ -511,6 +513,7 @@ export class DocumentDetailComponent
                 })
               )
             })
+            // [martin::start]
           })
 
           this.isDirty$ = dirtyCheck(

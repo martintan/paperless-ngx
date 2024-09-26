@@ -443,7 +443,6 @@ function initializeApp(settings: SettingsService) {
     SelectComponent,
     CheckComponent,
     UrlComponent,
-    PasswordComponent,
     SaveViewConfigDialogComponent,
     TagsComponent,
     IfPermissionsDirective,

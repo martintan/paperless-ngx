@@ -3,7 +3,7 @@ import { FormControl, FormGroup } from '@angular/forms'
 import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap'
 import { Subscription } from 'rxjs'
 import { DEFAULT_MATCHING_ALGORITHM } from 'src/app/data/matching-model'
-import { PaperlessStoragePath } from 'src/app/data/paperless-storage-path'
+import { StoragePath } from 'src/app/data/storage-path'
 import { PermissionsService } from 'src/app/services/permissions.service'
 import { StoragePathService } from 'src/app/services/rest/storage-path.service'
 import { UserService } from 'src/app/services/rest/user.service'
@@ -16,17 +16,18 @@ import { SettingsService } from 'src/app/services/settings.service'
   styleUrls: ['./folder-create-dialog.component.scss'],
 })
 export class FolderCreateDialogComponent
-  extends EditDialogComponent<PaperlessStoragePath>
-  implements OnInit, AfterViewInit {
+  extends EditDialogComponent<StoragePath>
+  implements OnInit, AfterViewInit
+{
   nameSub: Subscription
 
   constructor(
     service: StoragePathService,
     activeModal: NgbActiveModal,
     userService: UserService,
-    private settingsService: SettingsService
+    settingsService: SettingsService
   ) {
-    super(service, activeModal, userService)
+    super(service, activeModal, userService, settingsService)
   }
 
   ngOnInit(): void {

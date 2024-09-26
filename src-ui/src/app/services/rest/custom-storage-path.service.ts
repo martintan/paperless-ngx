@@ -1,12 +1,12 @@
 import { HttpClient, HttpParams } from '@angular/common/http'
 import { Injectable } from '@angular/core'
-import { Observable, filter, map, switchMap, tap } from 'rxjs'
+import { Observable, map, switchMap } from 'rxjs'
+import { Document } from 'src/app/data/document'
 import { FilterRule } from 'src/app/data/filter-rule'
-import { PaperlessStoragePath } from 'src/app/data/paperless-storage-path'
 import { Results } from 'src/app/data/results'
+import { StoragePath } from 'src/app/data/storage-path'
 import { queryParamsFromFilterRules } from 'src/app/utils/query-params'
 import { AbstractPaperlessService } from './abstract-paperless-service'
-import { PaperlessDocument } from 'src/app/data/paperless-document'
 
 interface SelectionDataItem {
   id: number
@@ -20,17 +20,19 @@ interface SelectionData {
   selected_document_types: SelectionDataItem[]
 }
 
-export type FileOrFolderItem = { type: 'file' } & PaperlessDocument | { type: 'folder' } & PaperlessStoragePath;
+export type FileOrFolderItem =
+  | ({ type: 'file' } & Document)
+  | ({ type: 'folder' } & StoragePath)
 
 @Injectable({
   providedIn: 'root',
 })
-export class CustomStoragePathService extends AbstractPaperlessService<PaperlessStoragePath> {
+export class CustomStoragePathService extends AbstractPaperlessService<StoragePath> {
   constructor(http: HttpClient) {
     super(http, 'storage_paths')
   }
 
-  getByPath(path: string): Observable<PaperlessStoragePath> {
+  getByPath(path: string): Observable<StoragePath> {
     return this.list(1, 1, null, null, { path__iexact: path }).pipe(
       map((results) => results.results.pop())
     )
@@ -44,7 +46,9 @@ export class CustomStoragePathService extends AbstractPaperlessService<Paperless
     filterRules?: FilterRule[],
     extraParams = {},
     parentStoragePathId?: number
-  ): Observable<Results<FileOrFolderItem> & { parentStoragePath?: PaperlessStoragePath }> {
+  ): Observable<
+    Results<FileOrFolderItem> & { parentStoragePath?: StoragePath }
+  > {
     const params = Object.assign(
       extraParams,
       queryParamsFromFilterRules(filterRules)
@@ -81,7 +85,10 @@ export class CustomStoragePathService extends AbstractPaperlessService<Paperless
       httpParams = httpParams.set('parent_storage_path_id', parentStoragePathId)
     }
 
-    return this.http.get<Results<FileOrFolderItem>>(`${this.baseUrl}files_and_folders/`, { params: httpParams })
+    return this.http.get<Results<FileOrFolderItem>>(
+      `${this.baseUrl}files_and_folders/`,
+      { params: httpParams }
+    )
   }
 
   listFiltered(
@@ -92,9 +99,7 @@ export class CustomStoragePathService extends AbstractPaperlessService<Paperless
     filterRules?: FilterRule[],
     extraParams = {},
     parentStoragePathId?: number
-  ): Observable<
-    Results<PaperlessStoragePath> & { parentStoragePath?: PaperlessStoragePath }
-  > {
+  ): Observable<Results<StoragePath> & { parentStoragePath?: StoragePath }> {
     const params = Object.assign(
       extraParams,
       queryParamsFromFilterRules(filterRules)

@@ -10,10 +10,10 @@ import {
 import { DocumentService } from './rest/document.service'
 
 interface UploadFilesCustomOptions {
-  storagePathId?: number;
-  isUploadWithFolders?: boolean;
-  isLargeFile?: boolean;
-  ocrSpecificPages?: string;
+  storagePathId?: number
+  isUploadWithFolders?: boolean
+  isLargeFile?: boolean
+  ocrSpecificPages?: string
 }
 
 @Injectable({
@@ -76,6 +76,23 @@ export class UploadDocumentsService {
     if (options.ocrSpecificPages) formData.append('ocr_specific_pages', options.ocrSpecificPages);
   }
   */
+
+  uploadDroppedFiles(files: NgxFileDropEntry[]) {
+    const filePromises = files
+      .filter((f) => f.fileEntry.isFile)
+      .map(
+        (f) =>
+          new Promise<File>((resolve) =>
+            (f.fileEntry as FileSystemFileEntry).file(resolve)
+          )
+      )
+
+    Promise.all(filePromises).then((fileList) => {
+      const dataTransfer = new DataTransfer()
+      fileList.forEach((file) => dataTransfer.items.add(file))
+      this.uploadFiles(dataTransfer.files)
+    })
+  }
 
   uploadFiles(files: FileList) {
     for (let index = 0; index < files.length; index++) {

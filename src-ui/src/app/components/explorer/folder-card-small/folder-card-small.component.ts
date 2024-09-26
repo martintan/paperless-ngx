@@ -1,6 +1,6 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core'
-import { PaperlessStoragePath } from 'src/app/data/paperless-storage-path'
-import { SETTINGS_KEYS } from 'src/app/data/paperless-uisettings'
+import { StoragePath } from 'src/app/data/storage-path'
+import { SETTINGS_KEYS } from 'src/app/data/ui-settings'
 import { StoragePathService } from 'src/app/services/rest/storage-path.service'
 import { SettingsService } from 'src/app/services/settings.service'
 import { ComponentWithPermissions } from '../../with-permissions/with-permissions.component'
@@ -28,7 +28,7 @@ export class FolderCardSmallComponent extends ComponentWithPermissions {
   toggleSelected = new EventEmitter()
 
   @Input()
-  storagePath: PaperlessStoragePath
+  storagePath: StoragePath
 
   @Output()
   dblClickDocument = new EventEmitter()

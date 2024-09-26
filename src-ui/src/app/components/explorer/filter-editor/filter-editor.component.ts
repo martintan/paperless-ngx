@@ -1,64 +1,65 @@
 import {
   Component,
+  ElementRef,
   EventEmitter,
   Input,
-  Output,
-  OnInit,
   OnDestroy,
+  OnInit,
+  Output,
   ViewChild,
-  ElementRef,
 } from '@angular/core'
-import { PaperlessTag } from 'src/app/data/paperless-tag'
-import { PaperlessCorrespondent } from 'src/app/data/paperless-correspondent'
-import { PaperlessDocumentType } from 'src/app/data/paperless-document-type'
 import { Subject, Subscription } from 'rxjs'
 import { debounceTime, distinctUntilChanged, filter } from 'rxjs/operators'
-import { DocumentTypeService } from 'src/app/services/rest/document-type.service'
-import { TagService } from 'src/app/services/rest/tag.service'
-import { CorrespondentService } from 'src/app/services/rest/correspondent.service'
-import { filterRulesDiffer, FilterRule } from 'src/app/data/filter-rule'
+import { Correspondent } from 'src/app/data/correspondent'
+import { Document } from 'src/app/data/document'
+import { DocumentType } from 'src/app/data/document-type'
+import { FilterRule } from 'src/app/data/filter-rule'
 import {
   FILTER_ADDED_AFTER,
   FILTER_ADDED_BEFORE,
   FILTER_ASN,
-  FILTER_HAS_CORRESPONDENT_ANY,
+  FILTER_ASN_GT,
+  FILTER_ASN_ISNULL,
+  FILTER_ASN_LT,
+  FILTER_CORRESPONDENT,
   FILTER_CREATED_AFTER,
   FILTER_CREATED_BEFORE,
-  FILTER_HAS_DOCUMENT_TYPE_ANY,
-  FILTER_FULLTEXT_MORELIKE,
-  FILTER_FULLTEXT_QUERY,
-  FILTER_HAS_ANY_TAG,
-  FILTER_HAS_TAGS_ALL,
-  FILTER_HAS_TAGS_ANY,
-  FILTER_DOES_NOT_HAVE_TAG,
-  FILTER_TITLE,
-  FILTER_TITLE_CONTENT,
-  FILTER_HAS_STORAGE_PATH_ANY,
-  FILTER_ASN_ISNULL,
-  FILTER_ASN_GT,
-  FILTER_ASN_LT,
+  FILTER_DOCUMENT_TYPE,
   FILTER_DOES_NOT_HAVE_CORRESPONDENT,
   FILTER_DOES_NOT_HAVE_DOCUMENT_TYPE,
   FILTER_DOES_NOT_HAVE_STORAGE_PATH,
-  FILTER_DOCUMENT_TYPE,
-  FILTER_CORRESPONDENT,
+  FILTER_DOES_NOT_HAVE_TAG,
+  FILTER_FULLTEXT_MORELIKE,
+  FILTER_FULLTEXT_QUERY,
+  FILTER_HAS_ANY_TAG,
+  FILTER_HAS_CORRESPONDENT_ANY,
+  FILTER_HAS_DOCUMENT_TYPE_ANY,
+  FILTER_HAS_STORAGE_PATH_ANY,
+  FILTER_HAS_TAGS_ALL,
+  FILTER_HAS_TAGS_ANY,
   FILTER_STORAGE_PATH,
+  FILTER_TITLE,
+  FILTER_TITLE_CONTENT,
 } from 'src/app/data/filter-rule-type'
+import { StoragePath } from 'src/app/data/storage-path'
+import { Tag } from 'src/app/data/tag'
+import { CorrespondentService } from 'src/app/services/rest/correspondent.service'
+import { DocumentTypeService } from 'src/app/services/rest/document-type.service'
+import {
+  DocumentService,
+  SelectionData,
+  SelectionDataItem,
+} from 'src/app/services/rest/document.service'
+import { StoragePathService } from 'src/app/services/rest/storage-path.service'
+import { TagService } from 'src/app/services/rest/tag.service'
+import { filterRulesDiffer } from 'src/app/utils/filter-rules'
+import { RelativeDate } from '../../common/dates-dropdown/dates-dropdown.component'
 import {
   FilterableDropdownSelectionModel,
   Intersection,
   LogicalOperator,
 } from '../../common/filterable-dropdown/filterable-dropdown.component'
 import { ToggleableItemState } from '../../common/filterable-dropdown/toggleable-dropdown-button/toggleable-dropdown-button.component'
-import {
-  DocumentService,
-  SelectionData,
-  SelectionDataItem,
-} from 'src/app/services/rest/document.service'
-import { PaperlessDocument } from 'src/app/data/paperless-document'
-import { PaperlessStoragePath } from 'src/app/data/paperless-storage-path'
-import { StoragePathService } from 'src/app/services/rest/storage-path.service'
-import { RelativeDate } from '../../common/date-dropdown/date-dropdown.component'
 
 const TEXT_FILTER_TARGET_TITLE = 'title'
 const TEXT_FILTER_TARGET_TITLE_CONTENT = 'title-content'
@@ -153,10 +154,10 @@ export class FilterEditorComponent implements OnInit, OnDestroy {
   @ViewChild('textFilterInput')
   textFilterInput: ElementRef
 
-  tags: PaperlessTag[] = []
-  correspondents: PaperlessCorrespondent[] = []
-  documentTypes: PaperlessDocumentType[] = []
-  storagePaths: PaperlessStoragePath[] = []
+  tags: Tag[] = []
+  correspondents: Correspondent[] = []
+  documentTypes: DocumentType[] = []
+  storagePaths: StoragePath[] = []
 
   tagDocumentCounts: SelectionDataItem[]
   correspondentDocumentCounts: SelectionDataItem[]
@@ -165,7 +166,7 @@ export class FilterEditorComponent implements OnInit, OnDestroy {
 
   _textFilter = ''
   _moreLikeId: number
-  _moreLikeDoc: PaperlessDocument
+  _moreLikeDoc: Document
 
   get textFilterTargets() {
     let targets = [
