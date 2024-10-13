@@ -431,7 +431,7 @@ function initializeApp(settings: SettingsService) {
     AppFrameComponent,
     ToastsComponent,
     FilterEditorComponent,
-    ExplorerFilterEditorComponent,
+    // ExplorerFilterEditorComponent,
     FilterableDropdownComponent,
     ToggleableDropdownButtonComponent,
     DatesDropdownComponent,

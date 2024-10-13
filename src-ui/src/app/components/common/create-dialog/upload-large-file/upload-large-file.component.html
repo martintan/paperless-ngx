@@ -33,12 +33,12 @@
     </div>
 
     <div class="w-full mb-2">
-      <app-input-text
+      <pngx-input-text
         i18n-title
         title='OCR pages separated by comma (e.g. "1,2,3,4")'
         formControlName="ocr_pages"
         [error]="error?.ocr_pages"
-      ></app-input-text>
+      ></pngx-input-text>
     </div>
 
     <div *appIfOwner="object">

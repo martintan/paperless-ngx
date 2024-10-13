@@ -10,12 +10,12 @@
     ></button>
   </div>
   <div class="modal-body">
-    <app-input-text
+    <pngx-input-text
       i18n-title
       title="Name"
       formControlName="name"
       [error]="error?.name"
-    ></app-input-text>
+    ></pngx-input-text>
 
     <div *appIfOwner="object">
       <app-permissions-form

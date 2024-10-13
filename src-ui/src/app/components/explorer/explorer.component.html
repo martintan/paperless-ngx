@@ -1,4 +1,4 @@
-<app-page-header [title]="getTitle()">
+<pngx-page-header [title]="getTitle()">
   <div ngbDropdown class="me-2 d-flex">
     <button
       class="btn btn-sm btn-outline-primary"
@@ -166,7 +166,7 @@
       </ng-container>
     </div>
   </div>
-</app-page-header>
+</pngx-page-header>
 
 <div class="row sticky-top pt-3 pt-sm-4 pb-2 pb-lg-4 bg-body">
   <div class="flex pb-2 mb-4">
@@ -207,7 +207,7 @@
     </button>
   </div>
 
-  <app-bulk-editor [hidden]="!isBulkEditing"></app-bulk-editor>
+  <pngx-bulk-editor [hidden]="!isBulkEditing"></pngx-bulk-editor>
 </div>
 
 <ng-template #pagination>
