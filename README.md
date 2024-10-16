@@ -7,8 +7,20 @@
 
 ```
 docker compose up -d
+# docker-compose up -d --force-recreate --build
+
 # open terminal in docker container
 python3 manage.py createsuperuser
+```
+
+update postgres data to new version
+```
+docker exec -it paperless-lbc-db-1 pg_dumpall -U paperless > dump.sql
+docker-compose stop paperless-lbc-db-1
+docker-compose down
+docker volume rm paperless-lbc_pgdata
+docker-compose up -d
+docker exec -i paperless-lbc-db-1 psql -U paperless -d paperless < dump.sql
 ```
 
 Paperless LBC is a document management system that transforms your physical documents into a searchable online archive so you can keep, well, _less paper_.
