@@ -24,7 +24,6 @@
     "@ng-select/ng-select": "^13.5.0",
     "@ngneat/dirty-check-forms": "^3.0.3",
     "@popperjs/core": "^2.11.8",
-    "angular-password-strength-meter": "^11.0.0",
     "bootstrap": "^5.3.3",
     "file-saver": "^2.0.5",
     "mime-names": "^1.0.0",

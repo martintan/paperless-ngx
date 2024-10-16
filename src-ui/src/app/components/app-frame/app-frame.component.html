@@ -91,18 +91,14 @@
             <a class="nav-link" routerLink="explorer" routerLinkActive="active" (click)="closeMenu()"
               ngbPopover="Explorer" i18n-ngbPopover [disablePopover]="!slimSidebarEnabled" placement="end"
               container="body" triggers="mouseenter:mouseleave" popoverClass="popover-slim">
-              <svg class="sidebaricon" fill="currentColor">
-                <use xlink:href="assets/bootstrap-icons.svg#files" />
-              </svg><span>&nbsp;<ng-container i18n>File Explorer</ng-container></span>
+              <i-bs class="me-1" name="house"></i-bs><span>&nbsp;<ng-container i18n>File Explorer</ng-container></span>
             </a>
           </li>
           <li class="nav-item">
             <a class="nav-link" routerLink="reports" routerLinkActive="active" (click)="closeMenu()"
               ngbPopover="Reports" i18n-ngbPopover [disablePopover]="!slimSidebarEnabled" placement="end"
               container="body" triggers="mouseenter:mouseleave" popoverClass="popover-slim">
-              <svg class="sidebaricon" fill="currentColor">
-                <use xlink:href="assets/bootstrap-icons.svg#files" />
-              </svg><span>&nbsp;<ng-container i18n>Reports</ng-container></span>
+              <i-bs class="me-1" name="house"></i-bs><span>&nbsp;<ng-container i18n>Reports</ng-container></span>
             </a>
           </li>
         </ul>

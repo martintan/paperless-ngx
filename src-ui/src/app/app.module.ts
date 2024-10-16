@@ -223,7 +223,7 @@ import { SafeUrlPipe } from './pipes/safeurl.pipe'
 import { UsernamePipe } from './pipes/username.pipe'
 import { YesNoPipe } from './pipes/yes-no.pipe'
 import { SettingsService } from './services/settings.service'
-import { provideZxvbnServiceForPSM } from 'angular-password-strength-meter/zxcvbn'
+// import { provideZxvbnServiceForPSM } from 'angular-password-strength-meter/zxcvbn'
 
 const icons = {
   airplane,
@@ -556,7 +556,7 @@ function initializeApp(settings: SettingsService) {
     DirtySavedViewGuard,
     UsernamePipe,
     provideHttpClient(withInterceptorsFromDi()),
-    provideZxvbnServiceForPSM(),
+    // provideZxvbnServiceForPSM(),
   ],
 })
 export class AppModule {}
