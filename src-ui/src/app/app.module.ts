@@ -45,6 +45,7 @@ import { SelectComponent } from './components/common/input/select/select.compone
 import { CheckComponent } from './components/common/input/check/check.component'
 import { UrlComponent } from './components/common/input/url/url.component'
 import { PasswordComponent } from './components/common/input/password/password.component'
+import { PasswordWithStrengthComponent } from './components/common/input/password-with-strength/password-with-strength.component'
 import { SaveViewConfigDialogComponent } from './components/document-list/save-view-config-dialog/save-view-config-dialog.component'
 import { TagsComponent } from './components/common/input/tags/tags.component'
 import { IfPermissionsDirective } from './directives/if-permissions.directive'
@@ -435,6 +436,7 @@ function initializeApp(settings: SettingsService) {
     CheckComponent,
     UrlComponent,
     PasswordComponent,
+    PasswordWithStrengthComponent,
     SaveViewConfigDialogComponent,
     TagsComponent,
     IfPermissionsDirective,
